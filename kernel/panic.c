@@ -29,6 +29,7 @@
 #include <linux/bug.h>
 #include <linux/ratelimit.h>
 #include <linux/debugfs.h>
+#include <linux/play.h>
 #include <asm/sections.h>
 
 #define PANIC_TIMER_STEP 100
@@ -56,6 +57,29 @@ unsigned long panic_print;
 ATOMIC_NOTIFIER_HEAD(panic_notifier_list);
 
 EXPORT_SYMBOL(panic_notifier_list);
+
+#ifdef CONFIG_AUDIBLE_PANIC
+static struct note panic_sound[] = {
+	{ 784, 400 },
+	{ 784, 400 },
+	{ 784, 400 },
+	{ 622, 300 },
+	{ 932, 100 },
+	{ 784, 400 },
+	{ 622, 300 },
+	{ 932, 100 },
+	{ 784, 800 },
+	{ 1174, 400 },
+	{ 1174, 400 },
+	{ 1174, 400 },
+	{ 1244, 300 },
+	{ 932, 100 },
+	{ 740, 400 },
+	{ 622, 300 },
+	{ 932, 100 },
+	{ 784, 800 },
+};
+#endif
 
 static long no_blink(int state)
 {
@@ -213,6 +237,7 @@ void panic(const char *fmt, ...)
 	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
 		dump_stack();
 #endif
+	play(panic_sound, ARRAY_SIZE(panic_sound));
 
 	/*
 	 * If we have crashed and we have a crash kernel loaded let it handle
