@@ -81,6 +81,22 @@ static struct note panic_sound[] = {
 };
 #endif
 
+#ifdef CONFIG_AUDIBLE_WARN
+static struct note warn_sound[] = {
+	{ 440, 400 },
+	{ 440, 300 },
+	{ 440, 100 },
+	{ 440, 400 },
+	{ 523, 300 },
+	{ 494, 100 },
+	{ 494, 300 },
+	{ 440, 100 },
+	{ 440, 300 },
+	{ 440, 100 },
+	{ 440, 800 },
+};
+#endif
+
 static long no_blink(int state)
 {
 	return 0;
@@ -609,6 +625,8 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 
 	/* Just a warning, don't kill lockdep. */
 	add_taint(taint, LOCKDEP_STILL_OK);
+
+	play(warn_sound, ARRAY_SIZE(warn_sound));
 }
 
 #ifdef WANT_WARN_ON_SLOWPATH

@@ -1007,6 +1007,16 @@ config AUDIBLE_PANIC
 	  the system buzzer and not via any soundcard.
 	  Not available on all platforms.
 
+config AUDIBLE_WARN
+	bool "Aural warning"
+	select PLAY_LIB
+	default n
+	help
+	  If you say Y here, warnings will play a sound just
+	  after the stacktrace and registers dump. The sound is played via
+	  the system buzzer and not via any soundcard.
+	  Not available on all platforms.
+
 config SCHED_DEBUG
 	bool "Collect scheduler debugging info"
 	depends on DEBUG_KERNEL && PROC_FS
