@@ -97,6 +97,23 @@ static struct note warn_sound[] = {
 };
 #endif
 
+#ifdef CONFIG_AUDIBLE_OOPS
+static struct note oops_sound[] = {
+	{ 494, 100 },
+	{ 698, 100 },
+	{   0, 100 },
+	{ 698, 100 },
+	{ 698, 133 },
+	{ 659, 133 },
+	{ 587, 133 },
+	{ 523, 100 },
+	{ 330, 100 },
+	{ 262, 100 },
+	{ 330, 100 },
+	{ 262, 100 },
+};
+#endif
+
 static long no_blink(int state)
 {
 	return 0;
@@ -575,6 +592,7 @@ void oops_exit(void)
 	do_oops_enter_exit();
 	print_oops_end_marker();
 	kmsg_dump(KMSG_DUMP_OOPS);
+	play(oops_sound, ARRAY_SIZE(oops_sound));
 }
 
 struct warn_args {
