@@ -1012,6 +1012,9 @@ static enum skb_drop_reason icmp_echo(struct sk_buff *skb)
 	struct icmp_bxm icmp_param;
 	struct net *net;
 
+	if (IN_DEV_STEALTH(__in_dev_get_rcu(skb->dev)))
+		return SKB_DROP_REASON_STEALTH;
+
 	net = dev_net_rcu(skb_dst(skb)->dev);
 	/* should there be an ICMP stat for ignored echos? */
 	if (READ_ONCE(net->ipv4.sysctl_icmp_echo_ignore_all))
@@ -1162,6 +1165,9 @@ static enum skb_drop_reason icmp_timestamp(struct sk_buff *skb)
 	 */
 	if (skb->len < 4)
 		goto out_err;
+
+	if (IN_DEV_STEALTH(__in_dev_get_rcu(skb->dev)))
+		return SKB_DROP_REASON_STEALTH;
 
 	/*
 	 *	Fill in the current time as ms since midnight UT:
