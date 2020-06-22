@@ -418,6 +418,10 @@ enum skb_drop_reason {
 	 * iterations.
 	 */
 	SKB_DROP_REASON_TC_RECLASSIFY_LOOP,
+	/** @SKB_DROP_REASON_STEALTH: stealth mode is enabled by
+	 * net.ipv4.conf.all.stealth or net.ipv4.conf.<iface>.stealth
+	 */
+	SKB_DROP_REASON_STEALTH,
 	/**
 	 * @SKB_DROP_REASON_MAX: the maximum of core drop reasons, which
 	 * shouldn't be used as a real 'reason' - only for tracing code gen
