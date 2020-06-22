@@ -1937,6 +1937,13 @@ igmp_link_local_mcast_reports - BOOLEAN
 
 	Default TRUE
 
+stealth - BOOLEAN
+	Disable any reply not related to a listening socket,
+	like RST/ACK for TCP and ICMP Port-Unreachable for UDP.
+	Also disables ICMP replies to echo requests and timestamp
+	and ICMP errors for unknown protocols.
+	Default value is 0.
+
 Alexey Kuznetsov.
 kuznet@ms2.inr.ac.ru
 
@@ -2758,6 +2765,13 @@ enhanced_dad - BOOLEAN
 	conf/{all,interface}/enhanced_dad are set to FALSE.
 
 	Default: TRUE
+
+stealth - BOOLEAN
+	Disable any reply not related to a listening socket,
+	like RST/ACK for TCP and ICMP Port-Unreachable for UDP.
+	Also disables ICMPv6 replies to echo requests
+	and ICMP errors for unknown protocols.
+	Default value is 0.
 
 ``icmp/*``:
 ===========

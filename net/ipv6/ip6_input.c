@@ -457,8 +457,9 @@ resubmit_final:
 			if (xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb)) {
 				__IP6_INC_STATS(net, idev,
 						IPSTATS_MIB_INUNKNOWNPROTOS);
-				icmpv6_send(skb, ICMPV6_PARAMPROB,
-					    ICMPV6_UNK_NEXTHDR, nhoff);
+				if (!idev->cnf.stealth)
+					icmpv6_send(skb, ICMPV6_PARAMPROB,
+						ICMPV6_UNK_NEXTHDR, nhoff);
 				SKB_DR_SET(reason, IP_NOPROTO);
 			} else {
 				SKB_DR_SET(reason, XFRM_POLICY);
