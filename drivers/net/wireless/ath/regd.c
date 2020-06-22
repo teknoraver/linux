@@ -114,6 +114,15 @@ static const struct ieee80211_regdomain ath_world_regdom_67_68_6A_6C = {
 	}
 };
 
+static const struct ieee80211_regdomain ath_freedom = {
+	.n_reg_rules = 2,
+	.alpha2 =  "99",
+	.reg_rules = {
+		REG_RULE(2412-10, 2484+10, 40, 0, 30, 0),
+		REG_RULE(4900-10, 5900+10, 160, 0, 30, 0),
+	}
+};
+
 static bool dynamic_country_user_possible(struct ath_regulatory *reg)
 {
 	if (IS_ENABLED(CONFIG_ATH_REG_DYNAMIC_USER_CERT_TESTING))
@@ -215,35 +224,13 @@ EXPORT_SYMBOL(ath_is_world_regd);
 
 static const struct ieee80211_regdomain *ath_default_world_regdomain(void)
 {
-	/* this is the most restrictive */
-	return &ath_world_regdom_64;
+	return &ath_freedom;
 }
 
 static const struct
 ieee80211_regdomain *ath_world_regdomain(struct ath_regulatory *reg)
 {
-	switch (reg->regpair->reg_domain) {
-	case 0x60:
-	case 0x61:
-	case 0x62:
-		return &ath_world_regdom_60_61_62;
-	case 0x63:
-	case 0x65:
-		return &ath_world_regdom_63_65;
-	case 0x64:
-		return &ath_world_regdom_64;
-	case 0x66:
-	case 0x69:
-		return &ath_world_regdom_66_69;
-	case 0x67:
-	case 0x68:
-	case 0x6A:
-	case 0x6C:
-		return &ath_world_regdom_67_68_6A_6C;
-	default:
-		WARN_ON(1);
-		return ath_default_world_regdomain();
-	}
+	return ath_default_world_regdomain();
 }
 
 bool ath_is_49ghz_allowed(u16 regdomain)
@@ -258,9 +245,7 @@ static bool ath_is_radar_freq(u16 center_freq,
 			      struct ath_regulatory *reg)
 
 {
-	if (reg->country_code == CTRY_INDIA)
-		return (center_freq >= 5500 && center_freq <= 5700);
-	return (center_freq >= 5260 && center_freq <= 5700);
+	return 0;
 }
 
 static void ath_force_clear_no_ir_chan(struct wiphy *wiphy,
