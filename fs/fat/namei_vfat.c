@@ -199,10 +199,7 @@ static const struct dentry_operations vfat_dentry_ops = {
 
 static inline bool vfat_bad_char(wchar_t w)
 {
-	return (w < 0x0020)
-	    || (w == '*') || (w == '?') || (w == '<') || (w == '>')
-	    || (w == '|') || (w == '"') || (w == ':') || (w == '/')
-	    || (w == '\\');
+	return w < 0x0020;
 }
 
 static inline bool vfat_replace_char(wchar_t w)
@@ -280,11 +277,6 @@ static inline int to_shortname_char(struct nls_table *nls,
 	if (vfat_skip_char(*src)) {
 		info->valid = 0;
 		return 0;
-	}
-	if (vfat_replace_char(*src)) {
-		info->valid = 0;
-		buf[0] = '_';
-		return 1;
 	}
 
 	len = nls->uni2char(*src, buf, buf_size);
