@@ -139,6 +139,7 @@ static inline void ipv4_devconf_setall(struct in_device *in_dev)
 #define IN_DEV_ARP_NOTIFY(in_dev)	IN_DEV_MAXCONF((in_dev), ARP_NOTIFY)
 #define IN_DEV_ARP_EVICT_NOCARRIER(in_dev) IN_DEV_ANDCONF((in_dev), \
 							  ARP_EVICT_NOCARRIER)
+#define IN_DEV_STEALTH(in_dev)		IN_DEV_MAXCONF((in_dev), STEALTH)
 
 struct in_ifaddr {
 	struct hlist_node	addr_lst;
