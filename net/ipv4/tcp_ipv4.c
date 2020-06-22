@@ -72,6 +72,7 @@
 #include <net/busy_poll.h>
 
 #include <linux/inet.h>
+#include <linux/inetdevice.h>
 #include <linux/ipv6.h>
 #include <linux/stddef.h>
 #include <linux/proc_fs.h>
@@ -2371,7 +2372,7 @@ csum_error:
 		__TCP_INC_STATS(net, TCP_MIB_CSUMERRORS);
 bad_packet:
 		__TCP_INC_STATS(net, TCP_MIB_INERRS);
-	} else {
+	} else if (!IN_DEV_STEALTH(__in_dev_get_rcu(skb->dev))) {
 		tcp_v4_send_reset(NULL, skb);
 	}
 
