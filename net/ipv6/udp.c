@@ -1165,7 +1165,8 @@ no_sk:
 		goto csum_error;
 
 	__UDP6_INC_STATS(net, UDP_MIB_NOPORTS, proto == IPPROTO_UDPLITE);
-	icmpv6_send(skb, ICMPV6_DEST_UNREACH, ICMPV6_PORT_UNREACH, 0);
+	if (!__in6_dev_get(skb->dev)->cnf.stealth)
+		icmpv6_send(skb, ICMPV6_DEST_UNREACH, ICMPV6_PORT_UNREACH, 0);
 
 	sk_skb_reason_drop(sk, skb, reason);
 	return 0;
