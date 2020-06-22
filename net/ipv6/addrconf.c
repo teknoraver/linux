@@ -7218,6 +7218,13 @@ static const struct ctl_table addrconf_sysctl[] = {
 		.proc_handler	= addrconf_sysctl_addr_gen_mode,
 	},
 	{
+		.procname	= "stealth",
+		.data		= &ipv6_devconf.stealth,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
 		.procname       = "disable_policy",
 		.data           = &ipv6_devconf.disable_policy,
 		.maxlen         = sizeof(int),

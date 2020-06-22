@@ -539,6 +539,10 @@ enum skb_drop_reason {
 	 * iterations.
 	 */
 	SKB_DROP_REASON_TC_RECLASSIFY_LOOP,
+	/** @SKB_DROP_REASON_STEALTH: stealth mode is enabled by
+	 * net.ipv4.conf.all.stealth or net.ipv4.conf.<iface>.stealth
+	 */
+	SKB_DROP_REASON_STEALTH,
 	/**
 	 * @SKB_DROP_REASON_VXLAN_INVALID_HDR: VXLAN header is invalid. E.g.:
 	 * 1) reserved fields are not zero

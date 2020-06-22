@@ -1944,7 +1944,7 @@ csum_error:
 		__TCP_INC_STATS(net, TCP_MIB_CSUMERRORS);
 bad_packet:
 		__TCP_INC_STATS(net, TCP_MIB_INERRS);
-	} else {
+	} else if (!__in6_dev_get(skb->dev)->cnf.stealth) {
 		tcp_v6_send_reset(NULL, skb, sk_rst_convert_drop_reason(drop_reason));
 	}
 
