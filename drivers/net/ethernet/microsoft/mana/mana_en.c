@@ -97,7 +97,7 @@ static int mana_map_skb(struct sk_buff *skb, struct mana_port_context *apc,
 	tp->wqe_req.sgl[0].mem_key = gd->gpa_mkey;
 	tp->wqe_req.sgl[0].size = ash->size[0];
 
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	skb_for_each_frag(skb, i) {
 		frag = &skb_shinfo(skb)->frags[i];
 		da = skb_frag_dma_map(dev, frag, 0, skb_frag_size(frag),
 				      DMA_TO_DEVICE);

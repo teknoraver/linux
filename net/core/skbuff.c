@@ -1624,7 +1624,7 @@ struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb, int headroom,
 			n = NULL;
 			goto out;
 		}
-		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		skb_for_each_frag(skb, i) {
 			skb_shinfo(n)->frags[i] = skb_shinfo(skb)->frags[i];
 			skb_frag_ref(skb, i);
 		}
@@ -1699,7 +1699,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 			goto nofrags;
 		if (skb_zcopy(skb))
 			refcount_inc(&skb_uarg(skb)->refcnt);
-		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++)
+		skb_for_each_frag(skb, i)
 			skb_frag_ref(skb, i);
 
 		if (skb_has_frag_list(skb))
@@ -2127,7 +2127,7 @@ void *__pskb_pull_tail(struct sk_buff *skb, int delta)
 
 	/* Estimate size of pulled pages. */
 	eat = delta;
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	skb_for_each_frag(skb, i) {
 		int size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
 
 		if (size >= eat)
@@ -2192,7 +2192,7 @@ void *__pskb_pull_tail(struct sk_buff *skb, int delta)
 pull_pages:
 	eat = delta;
 	k = 0;
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	skb_for_each_frag(skb, i) {
 		int size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
 
 		if (size <= eat) {
@@ -2260,7 +2260,7 @@ int skb_copy_bits(const struct sk_buff *skb, int offset, void *to, int len)
 		to     += copy;
 	}
 
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	skb_for_each_frag(skb, i) {
 		int end;
 		skb_frag_t *f = &skb_shinfo(skb)->frags[i];
 
@@ -2448,7 +2448,7 @@ static bool __skb_splice_bits(struct sk_buff *skb, struct pipe_inode_info *pipe,
 	/*
 	 * then map the fragments
 	 */
-	for (seg = 0; seg < skb_shinfo(skb)->nr_frags; seg++) {
+	skb_for_each_frag(skb, seg) {
 		const skb_frag_t *f = &skb_shinfo(skb)->frags[seg];
 
 		if (__splice_segment(skb_frag_page(f),
@@ -2563,7 +2563,7 @@ do_frag_list:
 	offset -= skb_headlen(skb);
 
 	/* Find where we are in frag list */
-	for (fragidx = 0; fragidx < skb_shinfo(skb)->nr_frags; fragidx++) {
+	skb_for_each_frag(skb, fragidx) {
 		skb_frag_t *frag  = &skb_shinfo(skb)->frags[fragidx];
 
 		if (offset < skb_frag_size(frag))
@@ -2662,7 +2662,7 @@ int skb_store_bits(struct sk_buff *skb, int offset, const void *from, int len)
 		from += copy;
 	}
 
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	skb_for_each_frag(skb, i) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 		int end;
 
@@ -2741,7 +2741,7 @@ __wsum __skb_checksum(const struct sk_buff *skb, int offset, int len,
 		pos	= copy;
 	}
 
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	skb_for_each_frag(skb, i) {
 		int end;
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 
@@ -2841,7 +2841,7 @@ __wsum skb_copy_and_csum_bits(const struct sk_buff *skb, int offset,
 		pos	= copy;
 	}
 
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	skb_for_each_frag(skb, i) {
 		int end;
 
 		WARN_ON(start > offset + len);
@@ -3073,7 +3073,7 @@ skb_zerocopy(struct sk_buff *to, struct sk_buff *from, int len, int hlen)
 	}
 	skb_zerocopy_clone(to, from, GFP_ATOMIC);
 
-	for (i = 0; i < skb_shinfo(from)->nr_frags; i++) {
+	skb_for_each_frag(from, i) {
 		int size;
 
 		if (!len)
@@ -3293,7 +3293,7 @@ static inline void skb_split_inside_header(struct sk_buff *skb,
 	skb_copy_from_linear_data_offset(skb, len, skb_put(skb1, pos - len),
 					 pos - len);
 	/* And move data appendix as is. */
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++)
+	skb_for_each_frag(skb, i)
 		skb_shinfo(skb1)->frags[i] = skb_shinfo(skb)->frags[i];
 
 	skb_shinfo(skb1)->nr_frags = skb_shinfo(skb)->nr_frags;
@@ -4429,7 +4429,7 @@ __skb_to_sgvec(struct sk_buff *skb, struct scatterlist *sg, int offset, int len,
 		offset += copy;
 	}
 
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+	skb_for_each_frag(skb, i) {
 		int end;
 
 		WARN_ON(start > offset + len);
@@ -6063,7 +6063,7 @@ static int pskb_carve_inside_header(struct sk_buff *skb, const u32 off,
 			kfree(data);
 			return -ENOMEM;
 		}
-		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++)
+		skb_for_each_frag(skb, i)
 			skb_frag_ref(skb, i);
 		if (skb_has_frag_list(skb))
 			skb_clone_fraglist(skb);
