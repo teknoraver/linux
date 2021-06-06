@@ -38,6 +38,7 @@ union types {
 	uint16_t *u16;
 	uint32_t *u32;
 	uint64_t *u64;
+	unsigned long *ulong;
 	uintptr_t ptr;
 };
 
@@ -46,6 +47,7 @@ union ctypes {
 	const uint16_t *u16;
 	const uint32_t *u32;
 	const uint64_t *u64;
+	unsigned long *ulong;
 	uintptr_t ptr;
 };
 
@@ -809,10 +811,23 @@ EXPORT_SYMBOL(__sysfs_match_string);
  */
 void *memset(void *s, int c, size_t count)
 {
-	char *xs = s;
+	union types dest = { .u8 = s };
+#ifndef CONFIG_CC_OPTIMIZE_FOR_SIZE
+	const int bytes_long = BITS_PER_LONG / 8;
+	uint8_t cc[] = { [0 ... bytes_long-1] = c };
+	union ctypes src = { .u8 = cc };
 
+#ifndef HAVE_EFFICIENT_UNALIGNED_ACCESS
+	for (; count && dest.ptr % bytes_long; count--)
+		*dest.u8++ = c;
+#endif
+
+	for (; count >= bytes_long; count -= bytes_long)
+		*dest.ulong++ = *src.ulong;
+#endif
 	while (count--)
-		*xs++ = c;
+		*dest.u8++ = c;
+
 	return s;
 }
 EXPORT_SYMBOL(memset);
