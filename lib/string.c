@@ -33,6 +33,22 @@
 #include <asm/word-at-a-time.h>
 #include <asm/page.h>
 
+union types {
+	uint8_t *u8;
+	uint16_t *u16;
+	uint32_t *u32;
+	uint64_t *u64;
+	uintptr_t ptr;
+};
+
+union ctypes {
+	const uint8_t *u8;
+	const uint16_t *u16;
+	const uint32_t *u32;
+	const uint64_t *u64;
+	uintptr_t ptr;
+};
+
 #ifndef __HAVE_ARCH_STRNCASECMP
 /**
  * strncasecmp - Case insensitive, length-limited string comparison
@@ -880,11 +896,44 @@ EXPORT_SYMBOL(memset64);
  */
 void *memcpy(void *dest, const void *src, size_t count)
 {
-	char *tmp = dest;
-	const char *s = src;
+	union types d = { .u8 = dest };
+	union ctypes s = { .u8 = src };
+#ifndef CONFIG_CC_OPTIMIZE_FOR_SIZE
+	void *labels[] = {
+		&&u64, &&u8, &&u16, &&u8,
+		&&u32, &&u8, &&u16, &&u8,
+	};
+#ifdef HAVE_EFFICIENT_UNALIGNED_ACCESS
+	int distance = 0;
+#else
+	const int bytes_long = BITS_PER_LONG / 8;
+	int distance = (src - dest) & 7;
 
+	for (; count && d.ptr % bytes_long; count--)
+		*d.u8++ = *s.u8++;
+#endif
+
+	goto *labels[distance];
+
+u64:
+#if BITS_PER_LONG == 64
+	for (; count >= 8; count -= 8)
+		*d.u64++ = *s.u64++;
+#endif
+
+u32:
+	for (; count >= 4; count -= 4)
+		*d.u32++ = *s.u32++;
+
+u16:
+	for (; count >= 2; count -= 2)
+		*d.u16++ = *s.u16++;
+
+u8:
+#endif
 	while (count--)
-		*tmp++ = *s++;
+		*d.u8++ = *s.u8++;
+
 	return dest;
 }
 EXPORT_SYMBOL(memcpy);
