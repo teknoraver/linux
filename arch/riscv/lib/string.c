@@ -85,3 +85,33 @@ void *__memcpy(void *dest, const void *src, size_t count)
 	return memcpy(dest, src, count);
 }
 EXPORT_SYMBOL(__memcpy);
+
+/**
+ * memmove - Copy one area of memory to another
+ * @dest: Where to copy to
+ * @src: Where to copy from
+ * @count: The size of the area.
+ *
+ * Unlike memcpy(), memmove() copes with overlapping areas.
+ */
+void *memmove(void *dest, const void *src, size_t count)
+{
+	if (dest < src || src + count <= dest)
+		return memcpy(dest, src, count);
+
+	if (dest > src) {
+		const char *s = src + count;
+		char *tmp = dest + count;
+
+		while (count--)
+			*--tmp = *--s;
+	}
+	return dest;
+}
+EXPORT_SYMBOL(memmove);
+
+void *__memmove(void *dest, const void *src, size_t count)
+{
+	return memmove(dest, src, count);
+}
+EXPORT_SYMBOL(__memmove);
