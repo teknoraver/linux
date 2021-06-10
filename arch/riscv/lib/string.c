@@ -18,6 +18,7 @@ union types {
 	u16 *u16;
 	u32 *u32;
 	u64 *u64;
+	unsigned long *ulong;
 	uintptr_t ptr;
 };
 
@@ -26,6 +27,7 @@ union ctypes {
 	const u16 *u16;
 	const u32 *u32;
 	const u64 *u64;
+	unsigned long *ulong;
 	uintptr_t ptr;
 };
 
@@ -115,3 +117,39 @@ void *__memmove(void *dest, const void *src, size_t count)
 	return memmove(dest, src, count);
 }
 EXPORT_SYMBOL(__memmove);
+
+/**
+ * memset - Fill a region of memory with the given value
+ * @s: Pointer to the start of the area.
+ * @c: The byte to fill the area with
+ * @count: The size of the area.
+ *
+ * Do not use memset() to access IO space, use memset_io() instead.
+ */
+void *memset(void *s, int c, size_t count)
+{
+	const int bytes_long = BITS_PER_LONG / 8;
+	u8 cc[] = { [0 ... bytes_long-1] = c };
+	union ctypes src = { .u8 = cc };
+	union types dest = { .u8 = s };
+
+#ifndef HAVE_EFFICIENT_UNALIGNED_ACCESS
+	for (; count && dest.ptr % bytes_long; count--)
+		*dest.u8++ = c;
+#endif
+
+	for (; count >= bytes_long; count -= bytes_long)
+		*dest.ulong++ = *src.ulong;
+
+	while (count--)
+		*dest.u8++ = c;
+
+	return s;
+}
+EXPORT_SYMBOL(memset);
+
+void *__memset(void *s, int c, size_t count)
+{
+	return memset(s, c, count);
+}
+EXPORT_SYMBOL(__memset);
