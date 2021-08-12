@@ -876,6 +876,8 @@ enum bpf_cmd {
 	BPF_ITER_CREATE,
 	BPF_LINK_DETACH,
 	BPF_PROG_BIND_MAP,
+	BPF_PROG_LOAD_ELF,
+	BPF_MAP_CREATE_ELF,
 };
 
 enum bpf_map_type {
@@ -1275,6 +1277,7 @@ union bpf_attr {
 						   * struct stored as the
 						   * map value
 						   */
+		__s32	map_elf_fd;
 	};
 
 	struct { /* anonymous struct used by BPF_MAP_*_ELEM commands */
@@ -1337,6 +1340,9 @@ union bpf_attr {
 		};
 		__u32		:32;		/* pad */
 		__aligned_u64	fd_array;	/* array of FDs */
+		__s32		prog_bpf_fd;	/* fd pointing to BPF program */
+		__aligned_u64	relocs;
+		__u32		relocs_num;
 	};
 
 	struct { /* anonymous struct used by BPF_OBJ_* commands */

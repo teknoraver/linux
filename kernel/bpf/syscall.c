@@ -32,6 +32,8 @@
 #include <linux/rcupdate_trace.h>
 #include <linux/memcontrol.h>
 
+#include "../module-internal.h"
+
 #define IS_FD_ARRAY(map) ((map)->map_type == BPF_MAP_TYPE_PERF_EVENT_ARRAY || \
 			  (map)->map_type == BPF_MAP_TYPE_CGROUP_ARRAY || \
 			  (map)->map_type == BPF_MAP_TYPE_ARRAY_OF_MAPS)
@@ -63,6 +65,9 @@ static const struct bpf_map_ops * const bpf_map_types[] = {
 #undef BPF_MAP_TYPE
 #undef BPF_LINK_TYPE
 };
+
+int elf_validity_check(struct load_info *info);
+unsigned int find_sec(const struct load_info *info, const char *name);
 
 /*
  * If we're handed a bigger struct than we know of, ensure all the unknown bits
@@ -910,6 +915,88 @@ free_map:
 	map->ops->map_free(map);
 	return err;
 }
+
+#define BPF_MAP_CREATE_ELF_LAST_FIELD map_elf_fd
+/* called via syscall */
+static int map_create_elf(union bpf_attr *attr)
+{
+	struct load_info info = { };
+	void *hdr = NULL;
+	int ret = 0;
+	int i;
+	Elf_Shdr *symsect;
+	const Elf_Sym *src, *mapsym = NULL;
+	int nsrc;
+
+	if (!attr->map_name[0]) {
+		pr_warn("Map name missing\n");
+		return -EINVAL;
+	}
+
+	ret = kernel_read_file_from_fd(attr->map_elf_fd, 0, &hdr, INT_MAX, NULL, READING_MODULE);
+	if (ret < 0) {
+		pr_warn("read failed: %pe\n", (void*)(uintptr_t)ret);
+		return ret;
+	}
+
+	info.hdr = hdr;
+	info.len = ret;
+
+	ret = elf_validity_check(&info);
+	if (ret) {
+		pr_warn("Invalid ELF file: %pe\n", (void*)(uintptr_t)ret);
+		goto out;
+	}
+
+	/* Find internal symbols and strings. */
+	for (i = 1; i < info.hdr->e_shnum; i++) {
+		if (info.sechdrs[i].sh_type == SHT_SYMTAB) {
+			info.index.sym = i;
+			info.index.str = info.sechdrs[i].sh_link;
+			info.strtab = (char *)info.hdr
+				+ info.sechdrs[info.index.str].sh_offset;
+			break;
+		}
+	}
+
+	if (info.index.sym == 0) {
+		pr_warn("object has no symbols (stripped?)\n");
+		ret = -ENOEXEC;
+		goto out;
+	}
+
+	symsect = info.sechdrs + info.index.sym;
+	src = (void *)info.hdr + symsect->sh_offset;
+	nsrc = symsect->sh_size / sizeof(*src);
+	for (i = 1; i < nsrc; i++) {
+		if (strcmp(info.strtab + src[i].st_name, attr->map_name)) {
+			mapsym = src + i;
+			break;
+		}
+	}
+
+	if (!mapsym) {
+		pr_warn("Symbol '%s' not found\n", attr->map_name);
+		ret = -ENOEXEC;
+		goto out;
+	}
+
+	info.index.info = find_sec(&info, "maps");
+	if (!info.index.info) {
+		pr_warn("Section maps not found\n");
+		ret = -ENOEXEC;
+		goto out;
+	}
+
+	memcpy(attr, hdr + info.sechdrs[info.index.info].sh_offset + mapsym->st_value, mapsym->st_size);
+	attr->map_elf_fd = 0;
+	ret = map_create(attr);
+
+out:
+	vfree(hdr);
+	return ret;
+}
+
 
 /* if error is returned, fd is released.
  * On success caller should complete fd access with matching fdput()
@@ -2321,6 +2408,110 @@ free_prog:
 		btf_put(prog->aux->attach_btf);
 	bpf_prog_free(prog);
 	return err;
+}
+
+#define RELO_LD64		0
+#define RELO_CALL		1
+#define RELO_DATA		2
+#define RELO_EXTERN_VAR		3
+#define RELO_EXTERN_FUNC	4
+#define RELO_SUBPROG_ADDR	5
+
+struct reloc_desc {
+	u32 type;
+	u32 insn_idx;
+	u32 map_idx;
+	u32 sym_off;
+};
+
+static int bpf_relocate_insns(struct bpf_insn *insns, int nr_insn,
+			       struct reloc_desc *relos, int nr_relos)
+{
+	int i;
+
+	for (i = 0; i < nr_relos; i++) {
+		struct reloc_desc *relo = &relos[i];
+		struct bpf_insn *insn = &insns[relo->insn_idx];
+
+		switch (relo->type) {
+		case RELO_LD64:
+			insn[0].src_reg = BPF_PSEUDO_MAP_FD;
+			insn[0].imm = relo->map_idx;
+			break;
+		default:
+			pr_warn("relo #%d: bad relo type %d\n",
+				i, relo->type);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+#define	BPF_PROG_LOAD_ELF_LAST_FIELD relocs_num
+
+static int bpf_prog_load_elf(union bpf_attr *attr, bpfptr_t uattr)
+{
+	struct load_info info = { };
+	void *hdr = NULL;
+	int ret = 0;
+	int i;
+
+	ret = kernel_read_file_from_fd(attr->prog_bpf_fd, 0, &hdr, INT_MAX, NULL, READING_MODULE);
+	if (ret < 0) {
+		pr_warn("read failed: %pe\n", (void*)(uintptr_t)ret);
+		return ret;
+	}
+
+	info.hdr = hdr;
+	info.len = ret;
+
+	ret = elf_validity_check(&info);
+	if (ret) {
+		pr_warn("Invalid ELF file: %pe\n", (void*)(uintptr_t)ret);
+		goto out;
+	}
+
+	/* Find internal symbols and strings. */
+	for (i = 1; i < info.hdr->e_shnum; i++) {
+		if (info.sechdrs[i].sh_type == SHT_SYMTAB) {
+			info.index.sym = i;
+			info.index.str = info.sechdrs[i].sh_link;
+			info.strtab = (char *)info.hdr
+				+ info.sechdrs[info.index.str].sh_offset;
+			break;
+		}
+	}
+
+	if (info.index.sym == 0) {
+		pr_warn("object has no symbols (stripped?)\n");
+		ret = -ENOEXEC;
+		goto out;
+	}
+
+	info.index.info = find_sec(&info, "prog");
+	if (!info.index.info) {
+		pr_warn("Section prog not found\n");
+		ret = -ENOEXEC;
+		goto out;
+	}
+
+	bpf_relocate_insns(hdr + info.sechdrs[info.index.info].sh_offset,
+			   info.sechdrs[info.index.info].sh_size / sizeof(struct bpf_insn),
+			   (struct reloc_desc *)attr->relocs,
+			   attr->relocs_num);
+
+	attr->insns = (uintptr_t)hdr + info.sechdrs[info.index.info].sh_offset;
+	attr->insn_cnt = info.sechdrs[info.index.info].sh_size / sizeof(struct bpf_insn);
+	uattr.is_kernel = true;
+	attr->prog_bpf_fd = 0;
+	attr->relocs = 0;
+	attr->relocs_num = 0;
+	ret = bpf_prog_load(attr, uattr);
+
+out:
+	vfree(hdr);
+	return ret;
 }
 
 #define BPF_OBJ_LAST_FIELD file_flags
@@ -4450,6 +4641,9 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 	case BPF_MAP_CREATE:
 		err = map_create(&attr);
 		break;
+	case BPF_MAP_CREATE_ELF:
+		err = map_create_elf(&attr);
+		break;
 	case BPF_MAP_LOOKUP_ELEM:
 		err = map_lookup_elem(&attr);
 		break;
@@ -4559,6 +4753,9 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 		break;
 	case BPF_PROG_BIND_MAP:
 		err = bpf_prog_bind_map(&attr);
+		break;
+	case BPF_PROG_LOAD_ELF:
+		err = bpf_prog_load_elf(&attr, uattr);
 		break;
 	default:
 		err = -EINVAL;

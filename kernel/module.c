@@ -345,7 +345,7 @@ void __noreturn __module_put_and_exit(struct module *mod, long code)
 EXPORT_SYMBOL(__module_put_and_exit);
 
 /* Find a module section: 0 means not found. */
-static unsigned int find_sec(const struct load_info *info, const char *name)
+unsigned int find_sec(const struct load_info *info, const char *name)
 {
 	unsigned int i;
 
@@ -2961,7 +2961,7 @@ static int validate_section_offset(struct load_info *info, Elf_Shdr *shdr)
  * Also do basic validity checks against section offsets and sizes, the
  * section name string table, and the indices used for it (sh_name).
  */
-static int elf_validity_check(struct load_info *info)
+int elf_validity_check(struct load_info *info)
 {
 	unsigned int i;
 	Elf_Shdr *shdr, *strhdr;
@@ -2972,7 +2972,7 @@ static int elf_validity_check(struct load_info *info)
 
 	if (memcmp(info->hdr->e_ident, ELFMAG, SELFMAG) != 0
 	    || info->hdr->e_type != ET_REL
-	    || !elf_check_arch(info->hdr)
+//	    || !elf_check_arch(info->hdr)
 	    || info->hdr->e_shentsize != sizeof(Elf_Shdr))
 		return -ENOEXEC;
 
