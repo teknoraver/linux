@@ -243,6 +243,8 @@ struct bpf_prog_load_params {
 	const char *name;
 	const struct bpf_insn *insns;
 	size_t insn_cnt;
+	void *relocs;
+	__u32 relocs_num;
 	const char *license;
 	__u32 kern_version;
 	__u32 attach_prog_fd;
@@ -251,6 +253,7 @@ struct bpf_prog_load_params {
 	__u32 prog_ifindex;
 	__u32 prog_btf_fd;
 	__u32 prog_flags;
+	int elf_fd;
 
 	__u32 func_info_rec_size;
 	const void *func_info;

@@ -46,6 +46,7 @@ struct bpf_create_map_attr {
 	__u32 btf_key_type_id;
 	__u32 btf_value_type_id;
 	__u32 map_ifindex;
+	__u32 elf_fd;
 	union {
 		__u32 inner_map_fd;
 		__u32 btf_vmlinux_value_type_id;
@@ -77,6 +78,8 @@ struct bpf_load_program_attr {
 	const char *name;
 	const struct bpf_insn *insns;
 	size_t insns_cnt;
+	void *relocs;
+	__u32 relocs_num;
 	const char *license;
 	union {
 		__u32 kern_version;
@@ -86,6 +89,7 @@ struct bpf_load_program_attr {
 		__u32 prog_ifindex;
 		__u32 attach_btf_id;
 	};
+	int elf_fd;
 	__u32 prog_btf_fd;
 	__u32 func_info_rec_size;
 	const void *func_info;

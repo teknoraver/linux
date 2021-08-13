@@ -306,6 +306,7 @@ struct bpf_program {
 	__u32 line_info_rec_size;
 	__u32 line_info_cnt;
 	__u32 prog_flags;
+	int elf_fd;
 };
 
 struct bpf_struct_ops {
@@ -1163,9 +1164,9 @@ static void bpf_object__elf_finish(struct bpf_object *obj)
 	obj->efile.bss = NULL;
 	obj->efile.st_ops_data = NULL;
 
-	zfree(&obj->efile.reloc_sects);
-	obj->efile.nr_reloc_sects = 0;
-	zclose(obj->efile.fd);
+	// zfree(&obj->efile.reloc_sects);
+	// obj->efile.nr_reloc_sects = 0;
+	// zclose(obj->efile.fd);
 	obj->efile.obj_buf = NULL;
 	obj->efile.obj_buf_sz = 0;
 }
@@ -3998,6 +3999,7 @@ bpf_object__probe_loading(struct bpf_object *obj)
 	attr.insns = insns;
 	attr.insns_cnt = ARRAY_SIZE(insns);
 	attr.license = "GPL";
+	attr.elf_fd = -1;
 
 	ret = bpf_load_program_xattr(&attr, NULL, 0);
 	if (ret < 0) {
@@ -4042,6 +4044,7 @@ static int probe_kern_prog_name(void)
 	attr.insns_cnt = ARRAY_SIZE(insns);
 	attr.license = "GPL";
 	attr.name = "test";
+	attr.elf_fd = -1;
 	ret = bpf_load_program_xattr(&attr, NULL, 0);
 	return probe_fd(ret);
 }
@@ -4081,6 +4084,7 @@ static int probe_kern_global_data(void)
 	prg_attr.insns = insns;
 	prg_attr.insns_cnt = ARRAY_SIZE(insns);
 	prg_attr.license = "GPL";
+	prg_attr.elf_fd = -1;
 
 	ret = bpf_load_program_xattr(&prg_attr, NULL, 0);
 	close(map);
@@ -4198,6 +4202,7 @@ static int probe_kern_exp_attach_type(void)
 	attr.insns = insns;
 	attr.insns_cnt = ARRAY_SIZE(insns);
 	attr.license = "GPL";
+	attr.elf_fd = -1;
 
 	return probe_fd(bpf_load_program_xattr(&attr, NULL, 0));
 }
@@ -4219,6 +4224,7 @@ static int probe_kern_probe_read_kernel(void)
 	attr.insns = insns;
 	attr.insns_cnt = ARRAY_SIZE(insns);
 	attr.license = "GPL";
+	attr.elf_fd = -1;
 
 	return probe_fd(bpf_load_program_xattr(&attr, NULL, 0));
 }
@@ -4254,6 +4260,7 @@ static int probe_prog_bind_map(void)
 	prg_attr.insns = insns;
 	prg_attr.insns_cnt = ARRAY_SIZE(insns);
 	prg_attr.license = "GPL";
+	prg_attr.elf_fd = -1;
 
 	prog = bpf_load_program_xattr(&prg_attr, NULL, 0);
 	if (prog < 0) {
@@ -4542,6 +4549,7 @@ static int bpf_object__create_map(struct bpf_object *obj, struct bpf_map *map, b
 		 */
 		map->fd = 0;
 	} else {
+		create_attr.elf_fd = obj->efile.fd;
 		map->fd = bpf_create_map_xattr(&create_attr);
 	}
 	if (map->fd < 0 && (create_attr.btf_key_type_id ||
@@ -4555,6 +4563,7 @@ static int bpf_object__create_map(struct bpf_object *obj, struct bpf_map *map, b
 		create_attr.btf_fd = 0;
 		create_attr.btf_key_type_id = 0;
 		create_attr.btf_value_type_id = 0;
+		create_attr.elf_fd = obj->efile.fd;
 		map->btf_key_type_id = 0;
 		map->btf_value_type_id = 0;
 		map->fd = bpf_create_map_xattr(&create_attr);
@@ -6466,12 +6475,16 @@ bpf_object__relocate_data(struct bpf_object *obj, struct bpf_program *prog)
 
 		switch (relo->type) {
 		case RELO_LD64:
+			if (obj->efile.fd >= 0) {
+				relo->map_idx = obj->maps[relo->map_idx].fd;
+			} else {
 			if (obj->gen_loader) {
 				insn[0].src_reg = BPF_PSEUDO_MAP_IDX;
 				insn[0].imm = relo->map_idx;
 			} else {
 				insn[0].src_reg = BPF_PSEUDO_MAP_FD;
 				insn[0].imm = obj->maps[relo->map_idx].fd;
+			}
 			}
 			break;
 		case RELO_DATA:
@@ -7028,8 +7041,8 @@ bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
 			return err;
 		}
 	}
-	if (!obj->gen_loader)
-		bpf_object__free_relocs(obj);
+	// if (!obj->gen_loader)
+	//	bpf_object__free_relocs(obj);
 	return 0;
 }
 
@@ -7279,8 +7292,11 @@ load_program(struct bpf_program *prog, struct bpf_insn *insns, int insns_cnt,
 		load_attr.expected_attach_type = prog->expected_attach_type;
 	if (kernel_supports(prog->obj, FEAT_PROG_NAME))
 		load_attr.name = prog->name;
+	load_attr.elf_fd = prog->elf_fd;
 	load_attr.insns = insns;
 	load_attr.insn_cnt = insns_cnt;
+	load_attr.relocs = prog->reloc_desc;
+	load_attr.relocs_num = prog->nr_reloc;
 	load_attr.license = license;
 	load_attr.attach_btf_id = prog->attach_btf_id;
 	if (prog->attach_prog_fd)
@@ -7528,6 +7544,7 @@ bpf_object__load_progs(struct bpf_object *obj, int log_level)
 		err = bpf_object__sanitize_prog(obj, prog);
 		if (err)
 			return err;
+		prog->elf_fd = obj->efile.fd;
 	}
 
 	for (i = 0; i < obj->nr_programs; i++) {

@@ -67,11 +67,20 @@ static inline int sys_bpf(enum bpf_cmd cmd, union bpf_attr *attr,
 
 static inline int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size)
 {
+	int cmd = BPF_PROG_LOAD;
 	int retries = 5;
 	int fd;
 
+	if (attr->prog_bpf_fd < 0) {
+		attr->prog_bpf_fd = 0;
+		attr->relocs = 0;
+		attr->relocs_num = 0;
+	} else {
+		cmd = BPF_PROG_LOAD_ELF;
+	}
+
 	do {
-		fd = sys_bpf(BPF_PROG_LOAD, attr, size);
+		fd = sys_bpf(cmd, attr, size);
 	} while (fd < 0 && errno == EAGAIN && retries-- > 0);
 
 	return fd;
@@ -79,6 +88,7 @@ static inline int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size)
 
 int bpf_create_map_xattr(const struct bpf_create_map_attr *create_attr)
 {
+	int cmd = BPF_MAP_CREATE;
 	union bpf_attr attr;
 	int fd;
 
@@ -102,8 +112,12 @@ int bpf_create_map_xattr(const struct bpf_create_map_attr *create_attr)
 			create_attr->btf_vmlinux_value_type_id;
 	else
 		attr.inner_map_fd = create_attr->inner_map_fd;
+	if (create_attr->elf_fd >= 0) {
+		attr.map_elf_fd = create_attr->elf_fd;
+		cmd = BPF_MAP_CREATE_ELF;
+	}
 
-	fd = sys_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
+	fd = sys_bpf(cmd, &attr, sizeof(attr));
 	return libbpf_err_errno(fd);
 }
 
@@ -246,6 +260,9 @@ int libbpf__bpf_prog_load(const struct bpf_prog_load_params *load_attr)
 
 	attr.insn_cnt = (__u32)load_attr->insn_cnt;
 	attr.insns = ptr_to_u64(load_attr->insns);
+	attr.prog_bpf_fd = load_attr->elf_fd;
+	attr.relocs = ptr_to_u64(load_attr->relocs);
+	attr.relocs_num = load_attr->relocs_num;
 	attr.license = ptr_to_u64(load_attr->license);
 
 	attr.log_level = load_attr->log_level;
@@ -356,8 +373,13 @@ int bpf_load_program_xattr(const struct bpf_load_program_attr *load_attr,
 		p.prog_ifindex = load_attr->prog_ifindex;
 		p.kern_version = load_attr->kern_version;
 	}
+
 	p.insn_cnt = load_attr->insns_cnt;
 	p.insns = load_attr->insns;
+	p.elf_fd = load_attr->elf_fd;
+	p.relocs = load_attr->relocs;
+	p.relocs_num = load_attr->relocs_num;
+
 	p.license = load_attr->license;
 	p.log_level = load_attr->log_level;
 	p.log_buf = log_buf;
