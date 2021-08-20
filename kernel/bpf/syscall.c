@@ -916,6 +916,8 @@ free_map:
 	return err;
 }
 
+int module_sig_check(struct load_info *info, int flags);
+
 #define BPF_MAP_CREATE_ELF_LAST_FIELD map_elf_fd
 /* called via syscall */
 static int map_create_elf(union bpf_attr *attr)
@@ -941,6 +943,12 @@ static int map_create_elf(union bpf_attr *attr)
 
 	info.hdr = hdr;
 	info.len = ret;
+
+	ret = module_sig_check(&info, 0);
+	if (ret) {
+		pr_warn("BPF has invalid signature: %pe\n", (void*)(uintptr_t)ret);
+		goto out;
+	}
 
 	ret = elf_validity_check(&info);
 	if (ret) {
@@ -2465,6 +2473,12 @@ static int bpf_prog_load_elf(union bpf_attr *attr, bpfptr_t uattr)
 
 	info.hdr = hdr;
 	info.len = ret;
+
+	ret = module_sig_check(&info, 0);
+	if (ret) {
+		pr_warn("BPF has invalid signature: %pe\n", (void*)(uintptr_t)ret);
+		goto out;
+	}
 
 	ret = elf_validity_check(&info);
 	if (ret) {
