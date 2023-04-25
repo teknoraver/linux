@@ -17,6 +17,7 @@
 #include <linux/atomic.h>
 #include <linux/bits.h>
 #include <linux/rculist.h>
+#include <linux/device.h>
 #include <linux/types.h>
 #include <linux/vesa.h>
 
@@ -343,6 +344,8 @@ struct console {
 	unsigned long		dropped;
 	void			*data;
 	struct hlist_node	node;
+	int			level;
+	struct device		*classdev;
 
 	/* nbcon console specific members */
 	bool			(*write_atomic)(struct console *con,

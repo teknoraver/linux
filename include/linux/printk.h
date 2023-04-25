@@ -73,6 +73,8 @@ extern int console_printk[];
 
 extern void console_verbose(void);
 
+int clamp_loglevel(int level);
+
 /* strlen("ratelimit") + 1 */
 #define DEVKMSG_STR_MAX_SIZE 10
 extern char devkmsg_log_str[DEVKMSG_STR_MAX_SIZE];
@@ -143,6 +145,7 @@ void early_printk(const char *s, ...) { }
 #endif
 
 struct dev_printk_info;
+struct console;
 
 #ifdef CONFIG_PRINTK
 asmlinkage __printf(4, 0)
@@ -197,6 +200,7 @@ extern asmlinkage void dump_stack_lvl(const char *log_lvl) __cold;
 extern asmlinkage void dump_stack(void) __cold;
 void printk_trigger_flush(void);
 void console_try_replay_all(void);
+bool per_console_loglevel_is_set(const struct console *con);
 #else
 static inline __printf(1, 0)
 int vprintk(const char *s, va_list args)
@@ -278,6 +282,10 @@ static inline void printk_trigger_flush(void)
 }
 static inline void console_try_replay_all(void)
 {
+}
+static inline bool per_console_loglevel_is_set(const struct console *con)
+{
+	return false;
 }
 #endif
 

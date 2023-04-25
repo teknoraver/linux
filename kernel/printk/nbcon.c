@@ -863,7 +863,7 @@ static bool nbcon_emit_next_record(struct nbcon_write_context *wctxt)
 	if (!nbcon_context_enter_unsafe(ctxt))
 		return false;
 
-	ctxt->backlog = printk_get_next_message(&pmsg, ctxt->seq, is_extended, true);
+	ctxt->backlog = printk_get_next_message(&pmsg, NULL, ctxt->seq, is_extended, true);
 	if (!ctxt->backlog)
 		return nbcon_context_exit_unsafe(ctxt);
 
