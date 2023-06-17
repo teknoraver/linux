@@ -32,6 +32,7 @@ fi
 
 scm_version()
 {
+	return
 	local short=false
 	local no_dirty=false
 	local tag
