@@ -301,8 +301,9 @@ bool encap_v6(struct xdp_md *xdp, struct ctl_value *cval,
 	memcpy(new_eth->eth_source, old_eth->eth_dest, 6);
 	new_eth->eth_proto = 56710;
 	ip6h->version = 6;
-	ip6h->priority = 0;
-	memset(ip6h->flow_lbl, 0, sizeof(ip6h->flow_lbl));
+	ip6h->dscp = 0;
+	ip6h->ecn = 0;
+	ip6h->flow_lbl = 0;
 
 	ip6h->nexthdr = IPPROTO_IPV6;
 	ip_suffix = pckt->flow.srcv6[3] ^ pckt->flow.port16[0];

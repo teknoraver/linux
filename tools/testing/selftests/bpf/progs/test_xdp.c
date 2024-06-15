@@ -196,8 +196,9 @@ static __always_inline int handle_ipv6(struct xdp_md *xdp)
 	set_ethhdr(new_eth, old_eth, tnl, bpf_htons(ETH_P_IPV6));
 
 	ip6h->version = 6;
-	ip6h->priority = 0;
-	memset(ip6h->flow_lbl, 0, sizeof(ip6h->flow_lbl));
+	ip6h->dscp = 0;
+	ip6h->ecn = 0;
+	ip6h->flow_lbl = 0;
 	ip6h->payload_len = bpf_htons(bpf_ntohs(payload_len) + sizeof(*ip6h));
 	ip6h->nexthdr = IPPROTO_IPV6;
 	ip6h->hop_limit = 8;
