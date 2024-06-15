@@ -1377,7 +1377,7 @@ ip_vs_tunnel_xmit_v6(struct sk_buff *skb, struct ip_vs_conn *cp,
 	iph->version		=	6;
 	iph->nexthdr		=	next_protocol;
 	iph->payload_len	=	htons(payload_len);
-	memset(&iph->flow_lbl, 0, sizeof(iph->flow_lbl));
+	iph->flow_lbl		= 	0;
 	ipv6_change_dsfield(iph, 0, dsfield);
 	iph->daddr = cp->daddr.in6;
 	iph->saddr = saddr;

@@ -307,7 +307,7 @@ static void br_nd_send(struct net_bridge *br, struct net_bridge_port *p,
 	pip6 = ipv6_hdr(reply);
 	memset(pip6, 0, sizeof(struct ipv6hdr));
 	pip6->version = 6;
-	pip6->priority = ipv6_hdr(request)->priority;
+	ip6_set_legacy_priority(pip6, ip6_get_legacy_priority(ipv6_hdr(request)));
 	pip6->nexthdr = IPPROTO_ICMPV6;
 	pip6->hop_limit = 255;
 	pip6->daddr = ipv6_hdr(request)->saddr;

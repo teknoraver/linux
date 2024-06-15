@@ -394,11 +394,10 @@ static int ah6_output(struct xfrm_state *x, struct sk_buff *skb)
 
 	ah->nexthdr = nexthdr;
 
-	top_iph->priority    = 0;
-	top_iph->flow_lbl[0] = 0;
-	top_iph->flow_lbl[1] = 0;
-	top_iph->flow_lbl[2] = 0;
-	top_iph->hop_limit   = 0;
+	top_iph->dscp		= 0;
+	top_iph->ecn		= 0;
+	top_iph->flow_lbl	= 0;
+	top_iph->hop_limit	= 0;
 
 	ah->hdrlen  = (XFRM_ALIGN8(sizeof(*ah) + ahp->icv_trunc_len) >> 2) - 2;
 
@@ -586,11 +585,10 @@ static int ah6_input(struct xfrm_state *x, struct sk_buff *skb)
 	if (err)
 		goto out_free;
 
-	ip6h->priority    = 0;
-	ip6h->flow_lbl[0] = 0;
-	ip6h->flow_lbl[1] = 0;
-	ip6h->flow_lbl[2] = 0;
-	ip6h->hop_limit   = 0;
+	ip6h->ecn	= 0;
+	ip6h->dscp	= 0;
+	ip6h->flow_lbl	= 0;
+	ip6h->hop_limit	= 0;
 
 	sg_init_table(sg, nfrags + sglists);
 	err = skb_to_sgvec_nomark(skb, sg, 0, skb->len);

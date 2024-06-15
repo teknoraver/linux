@@ -333,8 +333,7 @@ static int xfrm6_tunnel_encap_add(struct xfrm_state *x, struct sk_buff *skb)
 
 	top_iph->version = 6;
 
-	memcpy(top_iph->flow_lbl, XFRM_MODE_SKB_CB(skb)->flow_lbl,
-	       sizeof(top_iph->flow_lbl));
+	top_iph->flow_lbl =  XFRM_MODE_SKB_CB(skb)->flow_lbl;
 	top_iph->nexthdr = xfrm_af2proto(skb_dst(skb)->ops->family);
 
 	if (x->props.extra_flags & XFRM_SA_XFLAG_DONT_ENCAP_DSCP)

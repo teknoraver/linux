@@ -682,7 +682,7 @@ struct xfrm_mode_skb_cb {
 	u8 optlen;
 
 	/* Used by IPv6 only, zero for IPv4. */
-	u8 flow_lbl[3];
+	u32 flow_lbl;
 };
 
 #define XFRM_MODE_SKB_CB(__skb) ((struct xfrm_mode_skb_cb *)&((__skb)->cb[0]))
