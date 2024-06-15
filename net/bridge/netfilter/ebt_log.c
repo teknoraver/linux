@@ -124,8 +124,8 @@ ebt_log_packet(struct net *net, u_int8_t pf, unsigned int hooknum,
 			pr_cont(" INCOMPLETE IPv6 header");
 			goto out;
 		}
-		pr_cont(" IPv6 SRC=%pI6 IPv6 DST=%pI6, IPv6 priority=0x%01X, Next Header=%d",
-			&ih->saddr, &ih->daddr, ih->priority, ih->nexthdr);
+		pr_cont(" IPv6 SRC=%pI6 IPv6 DST=%pI6, IPv6 DSCP=0x%X, IPv6 ECN=0x%X, Next Header=%d",
+			&ih->saddr, &ih->daddr, ih->dscp, ih->ecn, ih->nexthdr);
 		nexthdr = ih->nexthdr;
 		offset_ph = ipv6_skip_exthdr(skb, sizeof(_iph), &nexthdr, &frag_off);
 		if (offset_ph == -1)
