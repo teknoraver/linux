@@ -108,25 +108,27 @@ struct ipv6_destopt_hao {
 	struct in6_addr		addr;
 } __attribute__((packed));
 
+#ifdef __KERNEL__
+#define IPV6_HDR_TOS
+#endif
+
 /*
  *	IPv6 fixed header
- *
- *	BEWARE, it is incorrect. The first 4 bits of flow_lbl
- *	are glued to priority now, forming "class".
  */
 
 struct ipv6hdr {
-#if defined(__LITTLE_ENDIAN_BITFIELD)
-	__u8			priority:4,
-				version:4;
-#elif defined(__BIG_ENDIAN_BITFIELD)
+#ifdef IPV6_HDR_TOS
+	struct __attribute__((scalar_storage_order("big-endian"))) {
+	__u32			version:4,
+				dscp:6,
+				ecn:2,
+				flow_lbl:20;
+	};
+#else
 	__u8			version:4,
 				priority:4;
-#else
-#error	"Please fix <asm/byteorder.h>"
-#endif
 	__u8			flow_lbl[3];
-
+#endif /* IPV6_HDR_TOS */
 	__be16			payload_len;
 	__u8			nexthdr;
 	__u8			hop_limit;
