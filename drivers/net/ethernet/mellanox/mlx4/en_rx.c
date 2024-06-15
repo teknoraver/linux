@@ -598,7 +598,7 @@ static int get_fixed_ipv4_csum(__wsum hw_checksum, struct sk_buff *skb,
 
 #if IS_ENABLED(CONFIG_IPV6)
 /* In IPv6 packets, hw_checksum lacks 6 bytes from IPv6 header:
- * 4 first bytes : priority, version, flow_lbl
+ * 4 first bytes : version, dscp, ecn, flow_lbl
  * and 2 additional bytes : nexthdr, hop_limit.
  */
 static int get_fixed_ipv6_csum(__wsum hw_checksum, struct sk_buff *skb,
@@ -612,7 +612,7 @@ static int get_fixed_ipv6_csum(__wsum hw_checksum, struct sk_buff *skb,
 		     nexthdr == IPPROTO_SCTP))
 		return -1;
 
-	/* priority, version, flow_lbl */
+	/* version, dscp, ecn, flow_lbl */
 	temp = csum_add(hw_checksum, *(__wsum *)ipv6h);
 	/* nexthdr and hop_limit */
 	skb->csum = csum_add(temp, (__force __wsum)*(__be16 *)&ipv6h->nexthdr);
