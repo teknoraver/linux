@@ -820,7 +820,7 @@ static void send_changed_tos(int fd, struct sockaddr_ll *daddr)
 		iph->check = 0;
 		iph->check = checksum_fold(iph, sizeof(struct iphdr), 0);
 	} else if (proto == PF_INET6) {
-		ip6h->priority = 0xf;
+		ip6h->dscp = 0x3f;
 	}
 	write_packet(fd, buf, pkt_size, daddr);
 }

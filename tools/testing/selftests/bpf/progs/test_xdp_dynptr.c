@@ -214,8 +214,9 @@ static __always_inline int handle_ipv6(struct xdp_md *xdp, struct bpf_dynptr *xd
 		bpf_dynptr_write(&new_xdp_ptr, 0, eth_buffer, sizeof(eth_buffer), 0);
 
 	ip6h->version = 6;
-	ip6h->priority = 0;
-	memset(ip6h->flow_lbl, 0, sizeof(ip6h->flow_lbl));
+	ip6h->dscp = 0;
+	ip6h->ecn = 0;
+	ip6h->flow_lbl = 0;
 	ip6h->payload_len = bpf_htons(bpf_ntohs(payload_len) + ipv6hdr_sz);
 	ip6h->nexthdr = IPPROTO_IPV6;
 	ip6h->hop_limit = 8;
