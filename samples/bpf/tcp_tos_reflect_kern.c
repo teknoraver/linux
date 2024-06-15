@@ -58,8 +58,7 @@ int bpf_basertt(struct bpf_sock_ops *skops)
 						       &tos, sizeof(tos));
 			} else {
 				hdr6 = (struct ipv6hdr *) header;
-				tos = ((hdr6->priority) << 4 |
-				       (hdr6->flow_lbl[0]) >>  4);
+				tos = ip6_get_tos(hdr6);
 				if (tos)
 					bpf_setsockopt(skops, SOL_IPV6,
 						       IPV6_TCLASS,
