@@ -185,9 +185,7 @@ static inline void erspan_build_header(struct sk_buff *skb,
 	u8 tos;
 	__be32 *idx;
 
-	tos = is_ipv4 ? ip_hdr(skb)->tos :
-			(ipv6_hdr(skb)->priority << 4) +
-			(ipv6_hdr(skb)->flow_lbl[0] >> 4);
+	tos = is_ipv4 ? ip_hdr(skb)->tos : ip6_get_tos(ipv6_hdr(skb));
 
 	enc_type = ERSPAN_ENCAP_NOVLAN;
 
@@ -281,9 +279,7 @@ static inline void erspan_build_header_v2(struct sk_buff *skb,
 	u8 sgt = 0;
 	u8 tos;
 
-	tos = is_ipv4 ? ip_hdr(skb)->tos :
-			(ipv6_hdr(skb)->priority << 4) +
-			(ipv6_hdr(skb)->flow_lbl[0] >> 4);
+	tos = is_ipv4 ? ip_hdr(skb)->tos : ip6_get_tos(ipv6_hdr(skb));
 
 	/* Unlike v1, v2 does not have En field,
 	 * so only extract vlan tci field.
