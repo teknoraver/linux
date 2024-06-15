@@ -446,11 +446,10 @@ void netpoll_send_udp(struct netpoll *np, const char *msg, int len)
 		skb_reset_network_header(skb);
 		ip6h = ipv6_hdr(skb);
 
-		/* ip6h->version = 6; ip6h->priority = 0; */
-		*(unsigned char *)ip6h = 0x60;
-		ip6h->flow_lbl[0] = 0;
-		ip6h->flow_lbl[1] = 0;
-		ip6h->flow_lbl[2] = 0;
+		ip6h->version = 6;
+		ip6h->dscp = 0;
+		ip6h->ecn = 0;
+		ip6h->flow_lbl = 0;
 
 		ip6h->payload_len = htons(sizeof(struct udphdr) + len);
 		ip6h->nexthdr = IPPROTO_UDP;
