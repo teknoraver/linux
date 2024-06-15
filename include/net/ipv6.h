@@ -1070,6 +1070,17 @@ static inline __be32 flowi6_get_flowlabel(const struct flowi6 *fl6)
 	return fl6->flowlabel & IPV6_FLOWLABEL_MASK;
 }
 
+static inline u8 ip6_get_tos(const struct ipv6hdr *hdr)
+{
+	return (hdr->dscp << 2) | hdr->ecn;
+}
+
+static inline void ip6_set_tos(struct ipv6hdr *hdr, u8 value)
+{
+	hdr->dscp = value >> 2;
+	hdr->ecn = value;
+}
+
 /*
  *	Prototypes exported by ipv6
  */
