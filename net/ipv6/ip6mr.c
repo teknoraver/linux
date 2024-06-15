@@ -2316,10 +2316,9 @@ int ip6mr_get_route(struct net *net, struct sk_buff *skb, struct rtmsg *rtm,
 
 		iph = ipv6_hdr(skb2);
 		iph->version = 0;
-		iph->priority = 0;
-		iph->flow_lbl[0] = 0;
-		iph->flow_lbl[1] = 0;
-		iph->flow_lbl[2] = 0;
+		iph->dscp = 0;
+		iph->ecn = 0;
+		iph->flow_lbl = 0;
 		iph->payload_len = 0;
 		iph->nexthdr = IPPROTO_NONE;
 		iph->hop_limit = 0;
