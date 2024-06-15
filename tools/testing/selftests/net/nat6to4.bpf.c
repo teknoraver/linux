@@ -94,7 +94,7 @@ int sched_cls_ingress6_nat_6_prog(struct __sk_buff *skb)
 	struct iphdr ip = {
 		.version = 4,                                                      // u4
 		.ihl = sizeof(struct iphdr) / sizeof(__u32),                       // u4
-		.tos = (ip6->priority << 4) + (ip6->flow_lbl[0] >> 4),             // u8
+		.tos = ip6_get_tos(ip6),                                           // u8
 		.tot_len = bpf_htons(bpf_ntohs(ip6->payload_len) + sizeof(struct iphdr)),  // u16
 		.id = 0,                                                           // u16
 		.frag_off = bpf_htons(IP_DF),                                          // u16
@@ -227,9 +227,10 @@ int sched_cls_egress4_snat4_prog(struct __sk_buff *skb)
 	eth2.h_proto = bpf_htons(ETH_P_IPV6);  // But replace the ethertype
 
 	struct ipv6hdr ip6 = {
-		.version = 6,                                    // __u8:4
-		.priority = ip4->tos >> 4,                       // __u8:4
-		.flow_lbl = {(ip4->tos & 0xF) << 4, 0, 0},       // __u8[3]
+		.version = 6,                                    // __u32:4
+		.dscp = ip4->tos >> 2,                           // __u32:6
+		.ecn = ip4->tos,                                 // __u32:2
+		.flow_lbl = 0,                                   // __u32:20
 		.payload_len = bpf_htons(bpf_ntohs(ip4->tot_len) - 20),  // __be16
 		.nexthdr = ip4->protocol,                        // __u8
 		.hop_limit = ip4->ttl,                           // __u8
