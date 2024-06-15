@@ -322,9 +322,10 @@ static int iptunnel_pmtud_build_icmpv6(struct sk_buff *skb, int mtu)
 
 	nip6h = skb_push(skb, sizeof(*nip6h));
 	*nip6h = (struct ipv6hdr) {
-		.priority		= 0,
+		.dscp			= 0,
+		.ecn			= 0,
 		.version		= 6,
-		.flow_lbl		= { 0 },
+		.flow_lbl		= 0,
 		.payload_len		= htons(len),
 		.nexthdr		= IPPROTO_ICMPV6,
 		.hop_limit		= ip6h->hop_limit,
