@@ -856,8 +856,7 @@ ice_vc_fdir_parse_pattern(struct ice_vf *vf, struct virtchnl_fdir_add *fltr,
 				memcpy(input->ip.v6.dst_ip,
 				       ip6h->daddr.in6_u.u6_addr8,
 				       sizeof(ip6h->daddr));
-				input->ip.v6.tc = ((u8)(ip6h->priority) << 4) |
-						  (ip6h->flow_lbl[0] >> 4);
+				input->ip.v6.tc = ip6_get_tos(ip6h);
 				input->ip.v6.proto = ip6h->nexthdr;
 			}
 			break;
