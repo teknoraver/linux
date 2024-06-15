@@ -106,8 +106,9 @@ static __be32 rxe_icrc_hdr(struct sk_buff *skb, struct rxe_pkt_info *pkt)
 		ip6h = (struct ipv6hdr *)pshdr;
 		udph = (struct udphdr *)(ip6h + 1);
 
-		memset(ip6h->flow_lbl, 0xff, sizeof(ip6h->flow_lbl));
-		ip6h->priority = 0xf;
+		ip6h->dscp = 0x3f;
+		ip6h->ecn = 0x3;
+		ip6h->flow_lbl = 0xfffff;
 		ip6h->hop_limit = 0xff;
 	}
 	udph->check = CSUM_MANGLED_0;
