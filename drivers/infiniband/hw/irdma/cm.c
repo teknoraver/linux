@@ -521,10 +521,8 @@ static struct irdma_puda_buf *irdma_form_uda_cm_frame(struct irdma_cm_node *cm_n
 			ethh->h_proto = htons(ETH_P_IPV6);
 		}
 		ip6h->version = 6;
-		ip6h->priority = cm_node->tos >> 4;
-		ip6h->flow_lbl[0] = cm_node->tos << 4;
-		ip6h->flow_lbl[1] = 0;
-		ip6h->flow_lbl[2] = 0;
+		ip6_set_tos(ip6h, cm_node->tos);
+		ip6h->flow_lbl = 0;
 		ip6h->payload_len = htons(pktsize - sizeof(*ip6h));
 		ip6h->nexthdr = 6;
 		ip6h->hop_limit = 128;
@@ -3188,7 +3186,7 @@ void irdma_receive_ilq(struct irdma_sc_vsi *vsi, struct irdma_puda_buf *rbuf)
 		irdma_copy_ip_ntohl(cm_info.rem_addr,
 				    ip6h->saddr.in6_u.u6_addr32);
 		cm_info.ipv4 = false;
-		cm_info.tos = (ip6h->priority << 4) | (ip6h->flow_lbl[0] >> 4);
+		cm_info.tos = ip6_get_tos(ip6h);
 	}
 	cm_info.loc_port = ntohs(tcph->dest);
 	cm_info.rem_port = ntohs(tcph->source);
