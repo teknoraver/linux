@@ -1488,7 +1488,7 @@ void irdma_puda_ieq_get_ah_info(struct irdma_sc_qp *qp,
 	} else {
 		ip6h = (struct ipv6hdr *)buf->iph;
 		ah_info->hop_ttl = ip6h->hop_limit;
-		ah_info->tc_tos = ip6h->priority;
+		ah_info->tc_tos = ip6_get_legacy_priority(ip6h);
 		irdma_copy_ip_ntohl(ah_info->dest_ip_addr,
 				    ip6h->daddr.in6_u.u6_addr32);
 		irdma_copy_ip_ntohl(ah_info->src_ip_addr,
