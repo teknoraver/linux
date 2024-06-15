@@ -118,7 +118,7 @@ static void hbm_get_pkt_info(struct __sk_buff *skb,
 		ip6h = (struct ipv6hdr *)&iph;
 		pkti->is_ip = true;
 		pkti->is_tcp = (ip6h->nexthdr == 6);
-		pkti->ecn = (ip6h->flow_lbl[0] >> 4) & INET_ECN_MASK;
+		pkti->ecn = ip6h->ecn;
 	} else if (iph.version == 4) {
 		pkti->is_ip = true;
 		pkti->is_tcp = (iph.protocol == 6);
