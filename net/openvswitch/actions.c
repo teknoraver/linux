@@ -456,13 +456,11 @@ static void set_ipv6_fl(struct sk_buff *skb, struct ipv6hdr *nh, u32 fl, u32 mas
 {
 	u32 ofl;
 
-	ofl = nh->flow_lbl[0] << 16 |  nh->flow_lbl[1] << 8 |  nh->flow_lbl[2];
+	ofl = nh->flow_lbl;
 	fl = OVS_MASKED(ofl, fl, mask);
 
 	/* Bits 21-24 are always unmasked, so this retains their values. */
-	nh->flow_lbl[0] = (u8)(fl >> 16);
-	nh->flow_lbl[1] = (u8)(fl >> 8);
-	nh->flow_lbl[2] = (u8)fl;
+	nh->flow_lbl = fl;
 
 	if (skb->ip_summed == CHECKSUM_COMPLETE)
 		csum_replace(&skb->csum, (__force __wsum)htonl(ofl), (__force __wsum)htonl(fl));
