@@ -504,38 +504,26 @@ static int lowpan_uncompress_multicast_ctx_daddr(struct sk_buff *skb,
 static inline void lowpan_iphc_tf_set_ecn(struct ipv6hdr *hdr, const u8 *tf)
 {
 	/* get the two higher bits which is ecn */
-	u8 ecn = tf[0] & 0xc0;
-
-	/* ECN takes 0x30 in hdr->flow_lbl[0] */
-	hdr->flow_lbl[0] |= (ecn >> 2);
+	hdr->ecn = tf[0] >> 6;
 }
 
 /* get the dscp values from iphc tf format and set it to ipv6hdr */
 static inline void lowpan_iphc_tf_set_dscp(struct ipv6hdr *hdr, const u8 *tf)
 {
 	/* DSCP is at place after ECN */
-	u8 dscp = tf[0] & 0x3f;
-
-	/* The four highest bits need to be set at hdr->priority */
-	hdr->priority |= ((dscp & 0x3c) >> 2);
-	/* The two lower bits is part of hdr->flow_lbl[0] */
-	hdr->flow_lbl[0] |= ((dscp & 0x03) << 6);
+	hdr->dscp = tf[0];
 }
 
 /* get the flow label values from iphc tf format and set it to ipv6hdr */
 static inline void lowpan_iphc_tf_set_lbl(struct ipv6hdr *hdr, const u8 *lbl)
 {
-	/* flow label is always some array started with lower nibble of
-	 * flow_lbl[0] and followed with two bytes afterwards. Inside inline
-	 * data the flow_lbl position can be different, which will be handled
+	/* Inside inline data the flow_lbl position can be different, which will be handled
 	 * by lbl pointer. E.g. case "01" vs "00" the traffic class is 8 bit
 	 * shifted, the different lbl pointer will handle that.
-	 *
-	 * The flow label will started at lower nibble of flow_lbl[0], the
-	 * higher nibbles are part of DSCP + ECN.
 	 */
-	hdr->flow_lbl[0] |= lbl[0] & 0x0f;
-	memcpy(&hdr->flow_lbl[1], &lbl[1], 2);
+	hdr->flow_lbl = (lbl[0] << 16) |
+			(lbl[1] <<  8) |
+			 lbl[2];
 }
 
 /* lowpan_iphc_tf_decompress - decompress the traffic class.
@@ -992,12 +980,8 @@ static inline u8 lowpan_iphc_get_tc(const struct ipv6hdr *hdr)
 {
 	u8 dscp, ecn;
 
-	/* hdr->priority contains the higher bits of dscp, lower are part of
-	 * flow_lbl[0]. Note ECN, DCSP is swapped in ipv6 hdr.
-	 */
-	dscp = (hdr->priority << 2) | ((hdr->flow_lbl[0] & 0xc0) >> 6);
-	/* ECN is at the two lower bits from first nibble of flow_lbl[0] */
-	ecn = (hdr->flow_lbl[0] & 0x30);
+	dscp = hdr->dscp;
+	ecn = hdr->ecn;
 	/* for pretty debug output, also shift ecn to get the ecn value */
 	pr_debug("ecn 0x%02x dscp 0x%02x\n", ecn >> 4, dscp);
 	/* ECN is at 0x30 now, shift it to have ECN + DCSP */
@@ -1007,8 +991,7 @@ static inline u8 lowpan_iphc_get_tc(const struct ipv6hdr *hdr)
 /* lowpan_iphc_is_flow_lbl_zero - check if flow label is zero */
 static inline bool lowpan_iphc_is_flow_lbl_zero(const struct ipv6hdr *hdr)
 {
-	return ((!(hdr->flow_lbl[0] & 0x0f)) &&
-		!hdr->flow_lbl[1] && !hdr->flow_lbl[2]);
+	return !hdr->flow_lbl;
 }
 
 /* lowpan_iphc_tf_compress - compress the traffic class which is set by
@@ -1048,11 +1031,11 @@ static u8 lowpan_iphc_tf_compress(u8 **hc_ptr, const struct ipv6hdr *hdr)
 			 * |ECN|rsv|             Flow Label                |
 			 * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 			 */
-			memcpy(&tf[0], &hdr->flow_lbl[0], 3);
-			/* zero the highest 4-bits, contains DCSP + ECN */
-			tf[0] &= ~0xf0;
+			tf[0] = hdr->flow_lbl >> 16;
+			tf[1] = hdr->flow_lbl >> 8;
+			tf[2] = hdr->flow_lbl;
 			/* set ECN */
-			tf[0] |= (tc & 0xc0);
+			tf[0] |= hdr->ecn << 4;
 
 			lowpan_push_hc_data(hc_ptr, tf, 3);
 			val = LOWPAN_IPHC_TF_01;
@@ -1065,12 +1048,9 @@ static u8 lowpan_iphc_tf_compress(u8 **hc_ptr, const struct ipv6hdr *hdr)
 			 * |ECN|   DSCP    |  rsv  |             Flow Label                |
 			 * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 			 */
-			memcpy(&tf[0], &tc, sizeof(tc));
-			/* highest nibble of flow_lbl[0] is part of DSCP + ECN
-			 * which will be the 4-bit pad and will be filled with
-			 * zeros afterwards.
-			 */
-			memcpy(&tf[1], &hdr->flow_lbl[0], 3);
+			tf[0] = hdr->flow_lbl >> 16;
+			tf[1] = hdr->flow_lbl >> 8;
+			tf[2] = hdr->flow_lbl;
 			/* zero the 4-bit pad, which is reserved */
 			tf[1] &= ~0xf0;
 
