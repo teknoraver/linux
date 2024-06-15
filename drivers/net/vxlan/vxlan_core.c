@@ -1992,7 +1992,8 @@ static struct sk_buff *vxlan_na_create(struct sk_buff *request,
 	pip6 = ipv6_hdr(reply);
 	memset(pip6, 0, sizeof(struct ipv6hdr));
 	pip6->version = 6;
-	pip6->priority = ipv6_hdr(request)->priority;
+	pip6->dscp = ipv6_hdr(request)->dscp;
+	pip6->ecn = ipv6_hdr(request)->ecn;
 	pip6->nexthdr = IPPROTO_ICMPV6;
 	pip6->hop_limit = 255;
 	pip6->daddr = ipv6_hdr(request)->saddr;
