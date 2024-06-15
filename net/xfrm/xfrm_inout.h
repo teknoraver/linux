@@ -16,8 +16,7 @@ static inline void xfrm4_extract_header(struct sk_buff *skb)
 	XFRM_MODE_SKB_CB(skb)->tos = iph->tos;
 	XFRM_MODE_SKB_CB(skb)->ttl = iph->ttl;
 	XFRM_MODE_SKB_CB(skb)->optlen = iph->ihl * 4 - sizeof(*iph);
-	memset(XFRM_MODE_SKB_CB(skb)->flow_lbl, 0,
-	       sizeof(XFRM_MODE_SKB_CB(skb)->flow_lbl));
+	XFRM_MODE_SKB_CB(skb)->flow_lbl = 0;
 }
 
 static inline void xfrm6_extract_header(struct sk_buff *skb)
@@ -31,8 +30,7 @@ static inline void xfrm6_extract_header(struct sk_buff *skb)
 	XFRM_MODE_SKB_CB(skb)->tos = ipv6_get_dsfield(iph);
 	XFRM_MODE_SKB_CB(skb)->ttl = iph->hop_limit;
 	XFRM_MODE_SKB_CB(skb)->optlen = 0;
-	memcpy(XFRM_MODE_SKB_CB(skb)->flow_lbl, iph->flow_lbl,
-	       sizeof(XFRM_MODE_SKB_CB(skb)->flow_lbl));
+	XFRM_MODE_SKB_CB(skb)->flow_lbl = iph->flow_lbl;
 #else
 	WARN_ON_ONCE(1);
 #endif
@@ -44,8 +42,7 @@ static inline void xfrm6_beet_make_header(struct sk_buff *skb)
 
 	iph->version = 6;
 
-	memcpy(iph->flow_lbl, XFRM_MODE_SKB_CB(skb)->flow_lbl,
-	       sizeof(iph->flow_lbl));
+	iph->flow_lbl = XFRM_MODE_SKB_CB(skb)->flow_lbl;
 	iph->nexthdr = XFRM_MODE_SKB_CB(skb)->protocol;
 
 	ipv6_change_dsfield(iph, 0, XFRM_MODE_SKB_CB(skb)->tos);

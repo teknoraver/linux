@@ -104,8 +104,7 @@ static int ecn_mt_check4(const struct xt_mtchk_param *par)
 static inline bool match_ipv6(const struct sk_buff *skb,
 			      const struct xt_ecn_info *einfo)
 {
-	return (((ipv6_hdr(skb)->flow_lbl[0] >> 4) & XT_ECN_IP_MASK) ==
-	        einfo->ip_ect) ^
+	return (ipv6_hdr(skb)->ecn == einfo->ip_ect) ^
 	       !!(einfo->invert & XT_ECN_OP_MATCH_IP);
 }
 
