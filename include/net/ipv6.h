@@ -1081,6 +1081,16 @@ static inline void ip6_set_tos(struct ipv6hdr *hdr, u8 value)
 	hdr->ecn = value;
 }
 
+static inline u8 ip6_get_legacy_priority(const struct ipv6hdr *hdr)
+{
+	return hdr->dscp >> 2;
+}
+
+static inline void ip6_set_legacy_priority(struct ipv6hdr *hdr, u8 value)
+{
+        hdr->dscp = (hdr->dscp & 3) | (value << 2);
+}
+
 /*
  *	Prototypes exported by ipv6
  */
