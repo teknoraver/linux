@@ -243,8 +243,14 @@ static int eswin_sdhci_delay_tuning(struct sdhci_host *host, u32 opcode)
 		if (ret) {
 			host->ops->reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
 			udelay(200);
-			if (delay_min != -1 && delay_max != -1)
-				break;
+			if (delay_min != -1 && delay_max != -1) {
+				if (delay_max < 15 && (delay_max - delay_min) < 6) {
+					/* Dropping initial small bogus window */
+					delay_min = delay_max = -1;
+				} else {
+					break;
+				}
+			}
 		} else {
 			if (delay_min == -1) {
 				delay_min = i;
