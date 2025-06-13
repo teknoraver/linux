@@ -464,7 +464,9 @@
 &sdhci_emmc {
 	/* emmc */
 	status = "okay";
-	delay_code = <0x17>;
+	/delete-property/ mmc-hs400-1_8v;
+	no-mmc-hs400;
+	delay_code = <0x37>;
 	drive-impedance-ohm = <50>;
 	enable-cmd-pullup;
 	enable-data-pullup;
@@ -477,7 +479,7 @@
 &sdio0 {
 	/* sd card */
 	status = "okay";
-	delay_code = <0x55>;
+	delay_code = <0x70>;
 	drive-impedance-ohm = <33>;
 	enable-cmd-pullup;
 	enable-data-pullup;
@@ -533,12 +535,17 @@
 
 &d0_usbdrd_dwc3_0 {
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usb0_pwren_default>;
 	dr_mode = "host";
 	maximum-speed = "super-speed";
 };
 
 &d0_usbdrd3_1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_gpio43_default>;
 	status = "okay";
+	hub-rst-gpios = <&portb 11 GPIO_ACTIVE_HIGH>;
 };
 
 &d0_usbdrd_dwc3_1 {
