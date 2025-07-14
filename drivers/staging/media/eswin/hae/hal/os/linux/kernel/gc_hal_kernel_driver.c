@@ -1555,6 +1555,7 @@ static int viv_dev_suspend(struct platform_device *dev, pm_message_t state)
                     return -1;
                 }
 
+                hae_print("hard: %p, store_state: %d, power off.", device->kernels[i]->hardware, device->statesStored[i]);
                 status = gckHARDWARE_SetPowerState(device->kernels[i]->hardware, gcvPOWER_OFF);
                 if (gcmIS_ERROR(status)) {
                     return -1;
@@ -1608,6 +1609,7 @@ static int viv_dev_resume(struct platform_device *dev)
                     break;
                 }
 
+                hae_print("hard: %p, store_state: %d, resume.", device->kernels[i]->hardware, statesStored);
                 /* Restore states. */
                 status = gckHARDWARE_SetPowerState(device->kernels[i]->hardware, statesStored);
                 if (gcmIS_ERROR(status)) {
