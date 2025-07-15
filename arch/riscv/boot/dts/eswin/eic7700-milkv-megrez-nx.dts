@@ -935,7 +935,6 @@
 		&pinctrl_gpio22_default
 		&pinctrl_gpio24_default
 		&pinctrl_gpio26_default
-		&pinctrl_gpio27_default
 		&pinctrl_gpio35_default
 		&pinctrl_gpio36_default
 		&pinctrl_gpio37_default
