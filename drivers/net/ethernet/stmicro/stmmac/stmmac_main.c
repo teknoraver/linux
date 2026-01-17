@@ -3310,6 +3310,8 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 	bool sph_en;
 	u32 chan;
 	int ret;
+	static int index;
+	u8 addr[ETH_ALEN] = "RISC-V";
 
 	/* DMA initialization and SW reset */
 	ret = stmmac_init_dma_engine(priv);
@@ -3320,6 +3322,8 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 	}
 
 	/* Copy the MAC addr into the HW  */
+	addr[ETH_ALEN - 1] += index++;
+	eth_hw_addr_set(priv->dev, addr); // Fixed MAC address
 	stmmac_set_umac_addr(priv, priv->hw, dev->dev_addr, 0);
 
 	/* PS and related bits will be programmed according to the speed */
