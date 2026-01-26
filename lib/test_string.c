@@ -207,6 +207,156 @@ static __init int strspn_selftest(void)
 	return 0;
 }
 
+#ifdef CONFIG_STRING_SELFTEST_BENCHMARK
+
+#define MEMCPY_SIZE (4 * 1024 * 1024)
+#define MEMCPYS	100
+
+static __init int memcpy_selftest_align(bool unalign)
+{
+	ktime_t start, end;
+	s64 elapsed_ns, total_ns = 0;
+	char *buf1;
+	char *buf2;
+	int ret = 0;
+
+	buf1 = kzalloc(MEMCPY_SIZE, GFP_KERNEL);
+	if (!buf1)
+		return -ENOMEM;
+
+	buf2 = kzalloc(MEMCPY_SIZE, GFP_KERNEL);
+	if (!buf2) {
+		ret = -ENOMEM;
+		goto out_free;
+	}
+
+	for (int i = 0; i < MEMCPYS; i++) {
+		preempt_disable();
+		start = ktime_get();
+		memcpy(buf1 + unalign, buf2, MEMCPY_SIZE - unalign);
+		end = ktime_get();
+		preempt_enable();
+		elapsed_ns = ktime_to_ns(ktime_sub(end, start));
+		total_ns += elapsed_ns;
+		cond_resched();
+	}
+
+	printk(KERN_INFO "memcpy: %saligned copy of %lu MBytes in %lld msecs (%lld MB/s)\n",
+	       unalign ? "un" : "",
+	       (unsigned long)(MEMCPYS * MEMCPY_SIZE) / (1024 * 1024),
+	       total_ns / 1000000,
+	       ((s64)MEMCPYS * MEMCPY_SIZE * 1000000000LL / max(total_ns, 1LL)) / (1024 * 1024));
+
+	kfree(buf2);
+
+out_free:
+	kfree(buf1);
+
+	return ret;
+}
+
+static __init int memcpy_selftest(void)
+{
+	int ret = 0;
+
+	ret = memcpy_selftest_align(false);
+	if (ret)
+		return ret;
+
+	return memcpy_selftest_align(true);
+}
+
+#define OVERLAP 1024
+
+static __init int memmove_selftest_align(bool unalign)
+{
+	ktime_t start, end;
+	s64 elapsed_ns, total_ns = 0;
+	char *buf;
+	int ret = 0;
+
+	buf = kzalloc(MEMCPY_SIZE, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	for (int i = 0; i < MEMCPYS; i++) {
+		preempt_disable();
+		start = ktime_get();
+		memmove(buf + OVERLAP + unalign, buf, MEMCPY_SIZE - OVERLAP - unalign);
+		end = ktime_get();
+		preempt_enable();
+		elapsed_ns = ktime_to_ns(ktime_sub(end, start));
+		total_ns += elapsed_ns;
+		cond_resched();
+	}
+
+	printk(KERN_INFO "memmove: %saligned move of %lu MBytes in %lld msecs (%lld MB/s)\n",
+	       unalign ? "un" : "",
+	       (unsigned long)(MEMCPYS * (MEMCPY_SIZE - OVERLAP)) / (1024 * 1024),
+	       total_ns / 1000000,
+	       ((s64)MEMCPYS * (MEMCPY_SIZE - OVERLAP) * 1000000000LL / max(total_ns, 1LL)) / (1024 * 1024));
+
+	kfree(buf);
+
+	return ret;
+}
+
+static __init int memmove_selftest(void)
+{
+	int ret = 0;
+
+	ret = memmove_selftest_align(false);
+	if (ret)
+		return ret;
+
+	return memmove_selftest_align(true);
+}
+
+static __init int memset_selftest_align(bool unalign)
+{
+	ktime_t start, end;
+	s64 elapsed_ns, total_ns = 0;
+	char *buf;
+	int ret = 0;
+
+	buf = kzalloc(MEMCPY_SIZE, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	for (int i = 0; i < MEMCPYS * 4; i++) {
+		preempt_disable();
+		start = ktime_get();
+		memset(buf + unalign, 0, MEMCPY_SIZE - unalign);
+		end = ktime_get();
+		preempt_enable();
+		elapsed_ns = ktime_to_ns(ktime_sub(end, start));
+		total_ns += elapsed_ns;
+		cond_resched();
+	}
+
+	printk(KERN_INFO "memset: %saligned set of %lu MBytes in %lld msecs (%lld MB/s)\n",
+	       unalign ? "un" : "",
+	       (unsigned long)(MEMCPYS * 4 * MEMCPY_SIZE) / (1024 * 1024),
+	       total_ns / 1000000,
+	       ((s64)MEMCPYS * 4 * MEMCPY_SIZE * 1000000000LL / max(total_ns, 1LL)) / (1024 * 1024));
+
+	kfree(buf);
+
+	return ret;
+}
+
+static __init int memset_selftest(void)
+{
+	int ret = 0;
+
+	ret = memset_selftest_align(false);
+	if (ret)
+		return ret;
+
+	return memset_selftest_align(true);
+}
+#endif
+
 static __exit void string_selftest_remove(void)
 {
 }
@@ -244,6 +394,23 @@ static __init int string_selftest_init(void)
 	subtest = strspn_selftest();
 	if (subtest)
 		goto fail;
+
+#ifdef CONFIG_STRING_SELFTEST_BENCHMARK
+	test = 7;
+	subtest = memcpy_selftest();
+	if (subtest)
+		goto fail;
+
+	test = 8;
+	subtest = memmove_selftest();
+	if (subtest)
+		goto fail;
+
+	test = 9;
+	subtest = memset_selftest();
+	if (subtest)
+		goto fail;
+#endif
 
 	pr_info("String selftests succeeded\n");
 	return 0;
