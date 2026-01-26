@@ -2347,6 +2347,17 @@ config TEST_HEXDUMP
 config STRING_SELFTEST
 	tristate "Test string functions at runtime"
 
+config STRING_SELFTEST_BENCHMARK
+	bool "Benchmark string functions at runtime"
+	depends on STRING_SELFTEST
+	help
+	  A benchmark measuring the performance of the mem{cpy,move,set}
+	  functions, with both aligned and unaligned buffers.
+
+	  Useful only if you are improving those functions.
+
+	  If unsure, say N.
+
 config TEST_STRING_HELPERS
 	tristate "Test functions located in the string_helpers module at runtime"
 
