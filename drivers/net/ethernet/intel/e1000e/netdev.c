@@ -4245,6 +4245,8 @@ void e1000e_up(struct e1000_adapter *adapter)
 
 	clear_bit(__E1000_DOWN, &adapter->state);
 
+	napi_enable(&adapter->napi);
+
 	if (adapter->msix_entries)
 		e1000_configure_msix(adapter);
 	e1000_irq_enable(adapter);
@@ -4317,7 +4319,7 @@ void e1000e_down(struct e1000_adapter *adapter, bool reset)
 
 	e1000_irq_disable(adapter);
 
-	napi_synchronize(&adapter->napi);
+	napi_disable(&adapter->napi);
 
 	timer_delete_sync(&adapter->watchdog_timer);
 	timer_delete_sync(&adapter->phy_info_timer);
@@ -4762,6 +4764,9 @@ int e1000e_close(struct net_device *netdev)
 
 	pm_runtime_get_sync(&pdev->dev);
 
+	/* A device which is not present was already brought down, and its
+	 * NAPI disabled, when it was detached.
+	 */
 	if (netif_device_present(netdev)) {
 		e1000e_down(adapter, true);
 		e1000_free_irq(adapter);
@@ -4772,7 +4777,6 @@ int e1000e_close(struct net_device *netdev)
 
 	netif_queue_set_napi(netdev, 0, NETDEV_QUEUE_TYPE_RX, NULL);
 	netif_queue_set_napi(netdev, 0, NETDEV_QUEUE_TYPE_TX, NULL);
-	napi_disable(&adapter->napi);
 
 	e1000e_free_tx_resources(adapter->tx_ring);
 	e1000e_free_rx_resources(adapter->rx_ring);
