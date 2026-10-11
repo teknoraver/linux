@@ -1927,18 +1927,17 @@ static irqreturn_t e1000_intr_msix_tx(int __always_unused irq, void *data)
 {
 	struct net_device *netdev = data;
 	struct e1000_adapter *adapter = netdev_priv(netdev);
-	struct e1000_hw *hw = &adapter->hw;
-	struct e1000_ring *tx_ring = adapter->tx_ring;
 
-	adapter->total_tx_bytes = 0;
-	adapter->total_tx_packets = 0;
-
-	if (!e1000_clean_tx_irq(tx_ring))
-		/* Ring was not completely cleaned, so fire another interrupt */
-		ew32(ICS, tx_ring->ims_val);
-
-	if (!test_bit(__E1000_DOWN, &adapter->state))
-		ew32(IMS, adapter->tx_ring->ims_val);
+	/* Tx completions are processed in NAPI context, the Tx interrupt is
+	 * re-enabled when polling is done.
+	 */
+	if (napi_schedule_prep(&adapter->napi)) {
+		adapter->total_tx_bytes = 0;
+		adapter->total_tx_packets = 0;
+		adapter->total_rx_bytes = 0;
+		adapter->total_rx_packets = 0;
+		__napi_schedule_irqoff(&adapter->napi);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -1961,6 +1960,8 @@ static irqreturn_t e1000_intr_msix_rx(int __always_unused irq, void *data)
 	}
 
 	if (napi_schedule_prep(&adapter->napi)) {
+		adapter->total_tx_bytes = 0;
+		adapter->total_tx_packets = 0;
 		adapter->total_rx_bytes = 0;
 		adapter->total_rx_packets = 0;
 		__napi_schedule_irqoff(&adapter->napi);
@@ -2671,13 +2672,11 @@ static int e1000e_poll(struct napi_struct *napi, int budget)
 						     napi);
 	struct e1000_hw *hw = &adapter->hw;
 	struct net_device *poll_dev = adapter->netdev;
-	int tx_cleaned = 1, work_done = 0;
+	int tx_cleaned, work_done = 0;
 
 	adapter = netdev_priv(poll_dev);
 
-	if (!adapter->msix_entries ||
-	    (adapter->rx_ring->ims_val & adapter->tx_ring->ims_val))
-		tx_cleaned = e1000_clean_tx_irq(adapter->tx_ring);
+	tx_cleaned = e1000_clean_tx_irq(adapter->tx_ring);
 
 	adapter->clean_rx(adapter->rx_ring, &work_done, budget);
 
@@ -2692,7 +2691,8 @@ static int e1000e_poll(struct napi_struct *napi, int budget)
 			e1000_set_itr(adapter);
 		if (!test_bit(__E1000_DOWN, &adapter->state)) {
 			if (adapter->msix_entries)
-				ew32(IMS, adapter->rx_ring->ims_val);
+				ew32(IMS, adapter->rx_ring->ims_val |
+					  adapter->tx_ring->ims_val);
 			else
 				e1000_irq_enable(adapter);
 		}
