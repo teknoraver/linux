@@ -129,6 +129,7 @@ enum e1000_boards {
 enum e1000_tx_buf_type {
 	E1000_TX_BUF_SKB = 0,
 	E1000_TX_BUF_XDP_TX,
+	E1000_TX_BUF_XDP_XMIT,
 };
 
 /* wrappers around a pointer to a socket buffer,
@@ -137,8 +138,12 @@ enum e1000_tx_buf_type {
 struct e1000_buffer {
 	dma_addr_t dma;
 	struct sk_buff *skb;
-	/* XDP_TX buffer, returned to its page_pool on completion */
-	netmem_ref netmem;
+	union {
+		/* XDP_TX buffer, returned to its page_pool on completion */
+		netmem_ref netmem;
+		/* frame from .ndo_xdp_xmit(), set on its first buffer */
+		struct xdp_frame *xdpf;
+	};
 	unsigned long time_stamp;
 	u16 length;
 	u16 next_to_watch;

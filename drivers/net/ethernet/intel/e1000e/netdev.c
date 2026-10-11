@@ -980,13 +980,21 @@ static void e1000_put_txbuf(struct e1000_ring *tx_ring,
 			dev_consume_skb_any(buffer_info->skb);
 		buffer_info->skb = NULL;
 	}
-	if (buffer_info->type == E1000_TX_BUF_XDP_TX) {
-		netmem_ref netmem = buffer_info->netmem;
-
-		page_pool_put_full_netmem(netmem_get_pp(netmem), netmem, false);
+	switch (buffer_info->type) {
+	case E1000_TX_BUF_XDP_TX:
+		page_pool_put_full_netmem(netmem_get_pp(buffer_info->netmem),
+					  buffer_info->netmem, false);
 		buffer_info->netmem = 0;
-		buffer_info->type = E1000_TX_BUF_SKB;
+		break;
+	case E1000_TX_BUF_XDP_XMIT:
+		if (buffer_info->xdpf)
+			xdp_return_frame(buffer_info->xdpf);
+		buffer_info->xdpf = NULL;
+		break;
+	default:
+		break;
 	}
+	buffer_info->type = E1000_TX_BUF_SKB;
 	buffer_info->time_stamp = 0;
 }
 
@@ -3778,7 +3786,8 @@ void e1000e_down(struct e1000_adapter *adapter, bool reset)
 		ew32(RCTL, rctl & ~E1000_RCTL_EN);
 	/* flush and sleep below */
 
-	netif_stop_queue(netdev);
+	/* also waits for .ndo_xdp_xmit() to release the Tx ring */
+	netif_tx_disable(netdev);
 
 	/* disable transmits in the hardware */
 	tctl = er32(TCTL);
@@ -6863,6 +6872,138 @@ static int e1000_xdp(struct net_device *netdev, struct netdev_bpf *xdp)
 	}
 }
 
+/**
+ * e1000_xdp_xmit_frame - place a redirected XDP frame on the Tx ring
+ * @tx_ring: Tx descriptor ring
+ * @xdpf: frame to transmit
+ *
+ * Must be called with the Tx queue lock held, as the ring is shared with
+ * the regular transmit path.
+ *
+ * Return: true on success, false if the frame was not placed on the ring.
+ **/
+static bool e1000_xdp_xmit_frame(struct e1000_ring *tx_ring,
+				 struct xdp_frame *xdpf)
+{
+	struct device *dev = &tx_ring->adapter->pdev->dev;
+	const struct skb_shared_info *sinfo = NULL;
+	u32 i, first, last, nr_frags = 0;
+	struct e1000_buffer *buffer_info;
+
+	if (unlikely(xdp_frame_has_frags(xdpf))) {
+		sinfo = xdp_get_shared_info_from_frame(xdpf);
+		nr_frags = sinfo->nr_frags;
+	}
+
+	if (unlikely(e1000_desc_unused(tx_ring) < nr_frags + 1))
+		return false;
+
+	first = tx_ring->next_to_use;
+	i = first;
+
+	for (u32 f = 0; f <= nr_frags; f++) {
+		dma_addr_t dma;
+		u32 len;
+
+		if (!f) {
+			len = xdpf->len;
+			dma = dma_map_single(dev, xdpf->data, len,
+					     DMA_TO_DEVICE);
+		} else {
+			const skb_frag_t *frag = &sinfo->frags[f - 1];
+
+			len = skb_frag_size(frag);
+			dma = skb_frag_dma_map(dev, frag);
+		}
+
+		if (dma_mapping_error(dev, dma))
+			goto unmap;
+
+		buffer_info = &tx_ring->buffer_info[i];
+		buffer_info->type = E1000_TX_BUF_XDP_XMIT;
+		buffer_info->xdpf = f ? NULL : xdpf;
+		buffer_info->dma = dma;
+		buffer_info->length = len;
+		buffer_info->mapped_as_page = !!f;
+		buffer_info->time_stamp = jiffies;
+		buffer_info->next_to_watch = i;
+		buffer_info->segs = 0;
+		buffer_info->bytecount = 0;
+
+		e1000_xdp_tx_desc(tx_ring, i, dma, len, f == nr_frags);
+
+		last = i;
+		if (unlikely(++i == tx_ring->count))
+			i = 0;
+	}
+
+	/* the frame is completed when its last descriptor is done */
+	tx_ring->buffer_info[first].next_to_watch = last;
+	tx_ring->buffer_info[last].segs = 1;
+	tx_ring->buffer_info[last].bytecount = xdp_get_frame_len(xdpf);
+
+	tx_ring->next_to_use = i;
+
+	return true;
+
+unmap:
+	/* the frame is freed by the caller */
+	tx_ring->buffer_info[first].xdpf = NULL;
+
+	while (i != first) {
+		if (i-- == 0)
+			i = tx_ring->count - 1;
+
+		e1000_put_txbuf(tx_ring, &tx_ring->buffer_info[i], false);
+	}
+
+	return false;
+}
+
+/**
+ * e1000_xdp_xmit - transmit XDP frames redirected from other devices
+ * @netdev: network interface device structure
+ * @n: number of frames to transmit
+ * @frames: frames to transmit
+ * @flags: XDP_XMIT_* flags
+ *
+ * Return: the number of frames placed on the Tx ring, negative on failure.
+ **/
+static int e1000_xdp_xmit(struct net_device *netdev, int n,
+			  struct xdp_frame **frames, u32 flags)
+{
+	struct e1000_adapter *adapter = netdev_priv(netdev);
+	struct e1000_ring *tx_ring = adapter->tx_ring;
+	struct netdev_queue *nq;
+	int nxmit = 0;
+
+	if (unlikely(flags & ~XDP_XMIT_FLAGS_MASK))
+		return -EINVAL;
+
+	nq = netdev_get_tx_queue(netdev, 0);
+	__netif_tx_lock(nq, smp_processor_id());
+
+	/* e1000e_down() takes the lock after setting the flag, so the Tx ring
+	 * can't be cleaned while the frames are being placed on it
+	 */
+	if (unlikely(test_bit(__E1000_DOWN, &adapter->state))) {
+		__netif_tx_unlock(nq);
+		return -ENETDOWN;
+	}
+
+	txq_trans_cond_update(nq);
+
+	while (nxmit < n && e1000_xdp_xmit_frame(tx_ring, frames[nxmit]))
+		nxmit++;
+
+	if (flags & XDP_XMIT_FLUSH)
+		e1000_xdp_ring_update_tail(tx_ring);
+
+	__netif_tx_unlock(nq);
+
+	return nxmit;
+}
+
 static const struct net_device_ops e1000e_netdev_ops = {
 	.ndo_open		= e1000e_open,
 	.ndo_stop		= e1000e_close,
@@ -6882,6 +7023,7 @@ static const struct net_device_ops e1000e_netdev_ops = {
 #endif
 	.ndo_set_features	= e1000_set_features,
 	.ndo_bpf		= e1000_xdp,
+	.ndo_xdp_xmit		= e1000_xdp_xmit,
 	.ndo_fix_features	= e1000_fix_features,
 	.ndo_features_check	= passthru_features_check,
 	.ndo_hwtstamp_get	= e1000e_hwtstamp_get,
@@ -7091,9 +7233,7 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	netdev->features |= NETIF_F_HIGHDMA;
 	netdev->vlan_features |= NETIF_F_HIGHDMA;
 
-	xdp_set_features_flag(netdev, NETDEV_XDP_ACT_BASIC |
-			      NETDEV_XDP_ACT_REDIRECT |
-			      NETDEV_XDP_ACT_RX_SG);
+	libeth_xdp_set_features(netdev);
 
 	/* MTU range: 68 - max_hw_frame_size */
 	netdev->min_mtu = ETH_MIN_MTU;
