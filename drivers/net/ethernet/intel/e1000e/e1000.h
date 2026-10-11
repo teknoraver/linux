@@ -126,18 +126,26 @@ enum e1000_boards {
 	board_pch_ptp
 };
 
+enum e1000_tx_buf_type {
+	E1000_TX_BUF_SKB = 0,
+	E1000_TX_BUF_XDP_TX,
+};
+
 /* wrappers around a pointer to a socket buffer,
  * so a DMA handle can be stored along with the buffer
  */
 struct e1000_buffer {
 	dma_addr_t dma;
 	struct sk_buff *skb;
+	/* XDP_TX buffer, returned to its page_pool on completion */
+	netmem_ref netmem;
 	unsigned long time_stamp;
 	u16 length;
 	u16 next_to_watch;
 	unsigned int segs;
 	unsigned int bytecount;
 	u16 mapped_as_page;
+	u8 type;
 };
 
 struct e1000_ring {
@@ -248,6 +256,7 @@ struct e1000_adapter {
 
 	/* Rx */
 	struct e1000_ring *rx_ring ____cacheline_aligned_in_smp;
+	struct bpf_prog *xdp_prog;
 
 	u32 rx_int_delay;
 	u32 rx_abs_int_delay;

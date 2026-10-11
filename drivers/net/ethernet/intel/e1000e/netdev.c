@@ -658,6 +658,211 @@ static bool e1000_rx_populate_skb(struct sk_buff *skb,
 }
 
 /**
+ * e1000_xdp_tx_desc - fill a Tx descriptor for an XDP frame
+ * @tx_ring: Tx descriptor ring
+ * @i: index of the descriptor to fill
+ * @dma: DMA address of the buffer
+ * @len: length of the buffer
+ * @last: whether the buffer is the last one of the frame
+ **/
+static void e1000_xdp_tx_desc(struct e1000_ring *tx_ring, u32 i,
+			      dma_addr_t dma, u32 len, bool last)
+{
+	struct e1000_tx_desc *tx_desc = E1000_TX_DESC(*tx_ring, i);
+	u32 txd_lower = E1000_TXD_CMD_IFCS | len;
+
+	if (last)
+		txd_lower |= tx_ring->adapter->txd_cmd;
+
+	tx_desc->buffer_addr = cpu_to_le64(dma);
+	tx_desc->lower.data = cpu_to_le32(txd_lower);
+	tx_desc->upper.data = 0;
+}
+
+/**
+ * e1000_xdp_tx_buff - place an XDP_TX frame on the Tx ring
+ * @tx_ring: Tx descriptor ring
+ * @xdp: frame to transmit, made of buffers from the Rx page_pool
+ *
+ * Must be called with the Tx queue lock held, as the ring is shared with
+ * the regular transmit path. The buffers are already DMA mapped by the
+ * page_pool, and are returned to it on Tx completion.
+ *
+ * Return: true on success, false if there are not enough free descriptors.
+ **/
+static bool e1000_xdp_tx_buff(struct e1000_ring *tx_ring,
+			      const struct xdp_buff *xdp)
+{
+	struct device *dev = &tx_ring->adapter->pdev->dev;
+	const struct skb_shared_info *sinfo = NULL;
+	u32 i, first, last, nr_frags = 0, bytes = 0;
+	struct e1000_buffer *buffer_info;
+
+	if (unlikely(xdp_buff_has_frags(xdp))) {
+		sinfo = xdp_get_shared_info_from_buff(xdp);
+		nr_frags = sinfo->nr_frags;
+	}
+
+	if (unlikely(e1000_desc_unused(tx_ring) < nr_frags + 1))
+		return false;
+
+	first = tx_ring->next_to_use;
+	i = first;
+
+	for (u32 f = 0; f <= nr_frags; f++) {
+		netmem_ref netmem;
+		dma_addr_t dma;
+		u32 off, len;
+
+		if (!f) {
+			netmem = virt_to_netmem(xdp->data);
+			off = offset_in_page(xdp->data);
+			len = xdp->data_end - xdp->data;
+		} else {
+			const skb_frag_t *frag = &sinfo->frags[f - 1];
+
+			netmem = skb_frag_netmem(frag);
+			off = skb_frag_off(frag);
+			len = skb_frag_size(frag);
+		}
+
+		dma = page_pool_get_dma_addr_netmem(netmem) + off;
+		dma_sync_single_for_device(dev, dma, len, DMA_BIDIRECTIONAL);
+
+		buffer_info = &tx_ring->buffer_info[i];
+		buffer_info->type = E1000_TX_BUF_XDP_TX;
+		buffer_info->netmem = netmem;
+		buffer_info->time_stamp = jiffies;
+		buffer_info->next_to_watch = i;
+		buffer_info->segs = 0;
+		buffer_info->bytecount = 0;
+		bytes += len;
+
+		e1000_xdp_tx_desc(tx_ring, i, dma, len, f == nr_frags);
+
+		last = i;
+		if (unlikely(++i == tx_ring->count))
+			i = 0;
+	}
+
+	/* the frame is completed when its last descriptor is done */
+	tx_ring->buffer_info[first].next_to_watch = last;
+	tx_ring->buffer_info[last].segs = 1;
+	tx_ring->buffer_info[last].bytecount = bytes;
+
+	tx_ring->next_to_use = i;
+
+	return true;
+}
+
+/**
+ * e1000_xdp_ring_update_tail - notify the hardware about new XDP frames
+ * @tx_ring: Tx descriptor ring
+ *
+ * Must be called with the Tx queue lock held.
+ **/
+static void e1000_xdp_ring_update_tail(struct e1000_ring *tx_ring)
+{
+	/* Force memory writes to complete before letting h/w
+	 * know there are new descriptors to fetch.
+	 */
+	wmb();
+	if (tx_ring->adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
+		e1000e_update_tdt_wa(tx_ring, tx_ring->next_to_use);
+	else
+		writel(tx_ring->next_to_use, tx_ring->tail);
+}
+
+/**
+ * e1000_xdp_xmit_back - transmit an XDP_TX frame
+ * @adapter: board private structure
+ * @xdp: frame to transmit
+ *
+ * Return: true on success, false if the frame must be dropped.
+ **/
+static bool e1000_xdp_xmit_back(struct e1000_adapter *adapter,
+				const struct xdp_buff *xdp)
+{
+	struct netdev_queue *nq = netdev_get_tx_queue(adapter->netdev, 0);
+	bool ret;
+
+	/* The Tx ring is shared with the regular transmit path */
+	__netif_tx_lock(nq, smp_processor_id());
+	txq_trans_cond_update(nq);
+	ret = e1000_xdp_tx_buff(adapter->tx_ring, xdp);
+	__netif_tx_unlock(nq);
+
+	return ret;
+}
+
+/**
+ * e1000_finalize_xdp - complete the XDP actions done in a NAPI poll
+ * @adapter: board private structure
+ * @act: mask of the XDP actions done
+ **/
+static void e1000_finalize_xdp(struct e1000_adapter *adapter, u32 act)
+{
+	if (act & LIBETH_XDP_REDIRECT)
+		xdp_do_flush();
+
+	if (act & LIBETH_XDP_TX) {
+		struct netdev_queue *nq;
+
+		nq = netdev_get_tx_queue(adapter->netdev, 0);
+		__netif_tx_lock(nq, smp_processor_id());
+		e1000_xdp_ring_update_tail(adapter->tx_ring);
+		__netif_tx_unlock(nq);
+	}
+}
+
+/**
+ * e1000_run_xdp - run the XDP program on a received frame
+ * @adapter: board private structure
+ * @xdp: received frame
+ * @prog: XDP program to run
+ *
+ * Return: LIBETH_XDP_PASS if the frame must be passed up the stack,
+ * otherwise the frame was consumed and the action done is returned.
+ **/
+static u32 e1000_run_xdp(struct e1000_adapter *adapter,
+			 struct libeth_xdp_buff *xdp, struct bpf_prog *prog)
+{
+	struct net_device *netdev = adapter->netdev;
+	u32 act;
+
+	act = bpf_prog_run_xdp(prog, &xdp->base);
+	switch (act) {
+	case XDP_PASS:
+		return LIBETH_XDP_PASS;
+	case XDP_TX:
+		if (unlikely(!e1000_xdp_xmit_back(adapter, &xdp->base)))
+			goto out_failure;
+
+		xdp->data = NULL;
+
+		return LIBETH_XDP_TX;
+	case XDP_REDIRECT:
+		if (unlikely(xdp_do_redirect(netdev, &xdp->base, prog)))
+			goto out_failure;
+
+		xdp->data = NULL;
+
+		return LIBETH_XDP_REDIRECT;
+	default:
+		bpf_warn_invalid_xdp_action(netdev, prog, act);
+		fallthrough;
+	case XDP_ABORTED:
+out_failure:
+		trace_xdp_exception(netdev, prog, act);
+		fallthrough;
+	case XDP_DROP:
+		libeth_xdp_return_buff(xdp);
+
+		return LIBETH_XDP_DROP;
+	}
+}
+
+/**
  * e1000_clean_rx_irq - Send received data up the network stack
  * @rx_ring: Rx descriptor ring
  * @budget: maximum number of frames to process
@@ -671,8 +876,11 @@ static int e1000_clean_rx_irq(struct e1000_ring *rx_ring, int budget)
 	struct net_device *netdev = adapter->netdev;
 	struct libeth_rq_napi_stats rs = { };
 	u32 ntc = rx_ring->next_to_clean;
-	u32 cleaned_count = 0;
+	u32 cleaned_count = 0, xdp_act = 0;
+	struct bpf_prog *xdp_prog;
 	bool strip_fcs;
+
+	xdp_prog = READ_ONCE(adapter->xdp_prog);
 
 	strip_fcs = !(adapter->flags2 & FLAG2_CRC_STRIPPING) &&
 		    !(netdev->features & NETIF_F_RXFCS);
@@ -703,10 +911,23 @@ static int e1000_clean_rx_irq(struct e1000_ring *rx_ring, int budget)
 
 		/* errors are only valid for DD + EOP descriptors */
 		if ((staterr & E1000_RXD_STAT_EOP) && likely(xdp->data)) {
+			u32 act = LIBETH_XDP_PASS;
+
 			if (unlikely((staterr & E1000_RXDEXT_ERR_FRAME_ERR_MASK) &&
-				     !(netdev->features & NETIF_F_RXALL)))
+				     !(netdev->features & NETIF_F_RXALL))) {
 				libeth_xdp_return_buff_slow(xdp);
-			else
+				act = LIBETH_XDP_DROP;
+			} else if (xdp_prog) {
+				len = xdp_get_buff_len(&xdp->base);
+				act = e1000_run_xdp(adapter, xdp, xdp_prog);
+				if (act != LIBETH_XDP_PASS) {
+					rs.packets++;
+					rs.bytes += len;
+					xdp_act |= act;
+				}
+			}
+
+			if (act == LIBETH_XDP_PASS)
 				libeth_xdp_run_pass(xdp, NULL, &adapter->napi,
 						    &rs, rx_desc, NULL,
 						    e1000_rx_populate_skb);
@@ -723,6 +944,9 @@ static int e1000_clean_rx_irq(struct e1000_ring *rx_ring, int budget)
 
 	rx_ring->next_to_clean = ntc;
 	libeth_xdp_save_buff(&rx_ring->xdp, xdp);
+
+	if (xdp_act)
+		e1000_finalize_xdp(adapter, xdp_act);
 
 	cleaned_count = e1000_desc_unused(rx_ring);
 	if (cleaned_count)
@@ -755,6 +979,13 @@ static void e1000_put_txbuf(struct e1000_ring *tx_ring,
 		else
 			dev_consume_skb_any(buffer_info->skb);
 		buffer_info->skb = NULL;
+	}
+	if (buffer_info->type == E1000_TX_BUF_XDP_TX) {
+		netmem_ref netmem = buffer_info->netmem;
+
+		page_pool_put_full_netmem(netmem_get_pp(netmem), netmem, false);
+		buffer_info->netmem = 0;
+		buffer_info->type = E1000_TX_BUF_SKB;
 	}
 	buffer_info->time_stamp = 0;
 }
@@ -883,11 +1114,12 @@ static void e1000e_tx_hwtstamp_work(struct work_struct *work)
 /**
  * e1000_clean_tx_irq - Reclaim resources after transmit completes
  * @tx_ring: Tx descriptor ring
+ * @budget: NAPI budget, zero when called from netpoll
  *
  * the return value indicates whether actual cleaning was done, there
  * is no guarantee that everything was cleaned
  **/
-static bool e1000_clean_tx_irq(struct e1000_ring *tx_ring)
+static bool e1000_clean_tx_irq(struct e1000_ring *tx_ring, int budget)
 {
 	struct e1000_adapter *adapter = tx_ring->adapter;
 	struct net_device *netdev = adapter->netdev;
@@ -908,6 +1140,12 @@ static bool e1000_clean_tx_irq(struct e1000_ring *tx_ring)
 		bool cleaned = false;
 
 		dma_rmb();		/* read buffer_info after eop_desc */
+
+		/* XDP frames can't be freed without a NAPI budget */
+		if (unlikely(!budget &&
+			     tx_ring->buffer_info[i].type != E1000_TX_BUF_SKB))
+			break;
+
 		for (; !cleaned; count++) {
 			tx_desc = E1000_TX_DESC(*tx_ring, i);
 			buffer_info = &tx_ring->buffer_info[i];
@@ -993,6 +1231,7 @@ static int e1000_rx_fq_create(struct e1000_ring *rx_ring)
 		.count		= rx_ring->count,
 		.type		= LIBETH_FQE_SHORT,
 		.truesize	= PAGE_SIZE,
+		.xdp		= !!READ_ONCE(adapter->xdp_prog),
 		.nid		= NUMA_NO_NODE,
 	};
 	u32 len;
@@ -1974,7 +2213,7 @@ static int e1000e_poll(struct napi_struct *napi, int budget)
 
 	adapter = netdev_priv(poll_dev);
 
-	tx_cleaned = e1000_clean_tx_irq(adapter->tx_ring);
+	tx_cleaned = e1000_clean_tx_irq(adapter->tx_ring, budget);
 
 	work_done = e1000_clean_rx_irq(adapter->rx_ring, budget);
 
@@ -5298,6 +5537,13 @@ static int e1000_change_mtu(struct net_device *netdev, int new_mtu)
 		return -EINVAL;
 	}
 
+	/* frames bigger than a buffer can't be handled by every XDP program */
+	if (new_mtu > ETH_DATA_LEN && adapter->xdp_prog &&
+	    !adapter->xdp_prog->aux->xdp_has_frags) {
+		e_err("Jumbo Frames not supported by the XDP program.\n");
+		return -EINVAL;
+	}
+
 	/* Jumbo frame workaround on 82579 and newer requires CRC be stripped */
 	if ((adapter->hw.mac.type >= e1000_pch2lan) &&
 	    !(adapter->flags2 & FLAG2_CRC_STRIPPING) &&
@@ -6563,6 +6809,60 @@ static int e1000_set_features(struct net_device *netdev,
 	return 1;
 }
 
+/**
+ * e1000_xdp_setup - attach or detach an XDP program
+ * @netdev: network interface device structure
+ * @bpf: XDP program setup structure
+ *
+ * Return: 0 on success, negative on failure
+ **/
+static int e1000_xdp_setup(struct net_device *netdev, struct netdev_bpf *bpf)
+{
+	struct e1000_adapter *adapter = netdev_priv(netdev);
+	struct bpf_prog *prog = bpf->prog, *old_prog;
+	bool running = netif_running(netdev);
+	bool need_reset;
+
+	/* with jumbo frames enabled, a frame can span multiple buffers */
+	if (prog && !prog->aux->xdp_has_frags && netdev->mtu > ETH_DATA_LEN) {
+		NL_SET_ERR_MSG_MOD(bpf->extack,
+				   "MTU too large for an XDP program without frags support");
+		return -EOPNOTSUPP;
+	}
+
+	/* the Rx buffers need to be reallocated with the XDP headroom */
+	need_reset = !!prog != !!adapter->xdp_prog;
+
+	if (need_reset && running) {
+		while (test_and_set_bit(__E1000_RESETTING, &adapter->state))
+			usleep_range(1000, 1100);
+		pm_runtime_get_sync(netdev->dev.parent);
+		e1000e_down(adapter, true);
+	}
+
+	old_prog = xchg(&adapter->xdp_prog, prog);
+	if (old_prog)
+		bpf_prog_put(old_prog);
+
+	if (need_reset && running) {
+		e1000e_up(adapter);
+		pm_runtime_put_sync(netdev->dev.parent);
+		clear_bit(__E1000_RESETTING, &adapter->state);
+	}
+
+	return 0;
+}
+
+static int e1000_xdp(struct net_device *netdev, struct netdev_bpf *xdp)
+{
+	switch (xdp->command) {
+	case XDP_SETUP_PROG:
+		return e1000_xdp_setup(netdev, xdp);
+	default:
+		return -EINVAL;
+	}
+}
+
 static const struct net_device_ops e1000e_netdev_ops = {
 	.ndo_open		= e1000e_open,
 	.ndo_stop		= e1000e_close,
@@ -6581,6 +6881,7 @@ static const struct net_device_ops e1000e_netdev_ops = {
 	.ndo_poll_controller	= e1000_netpoll,
 #endif
 	.ndo_set_features	= e1000_set_features,
+	.ndo_bpf		= e1000_xdp,
 	.ndo_fix_features	= e1000_fix_features,
 	.ndo_features_check	= passthru_features_check,
 	.ndo_hwtstamp_get	= e1000e_hwtstamp_get,
@@ -6789,6 +7090,10 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	netdev->features |= NETIF_F_HIGHDMA;
 	netdev->vlan_features |= NETIF_F_HIGHDMA;
+
+	xdp_set_features_flag(netdev, NETDEV_XDP_ACT_BASIC |
+			      NETDEV_XDP_ACT_REDIRECT |
+			      NETDEV_XDP_ACT_RX_SG);
 
 	/* MTU range: 68 - max_hw_frame_size */
 	netdev->min_mtu = ETH_MIN_MTU;
