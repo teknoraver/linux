@@ -23,6 +23,8 @@
 #include <linux/mdio.h>
 #include <linux/mutex.h>
 #include <linux/pm_qos.h>
+#include <net/libeth/types.h>
+#include <net/xdp.h>
 #include "hw.h"
 
 struct e1000_info;
@@ -60,6 +62,9 @@ struct e1000_info;
 /* How many Tx Descriptors do we need to call netif_wake_queue ? */
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define E1000_RX_BUFFER_WRITE		16 /* Must be power of 2 */
+
+/* Rx buffer size programmed into the hardware */
+#define E1000_RX_BUFFER_LEN		2048
 
 #define AUTO_ALL_MODES			0
 #define E1000_EEPROM_APME		0x0400
@@ -127,19 +132,12 @@ enum e1000_boards {
 struct e1000_buffer {
 	dma_addr_t dma;
 	struct sk_buff *skb;
-	union {
-		/* Tx */
-		struct {
-			unsigned long time_stamp;
-			u16 length;
-			u16 next_to_watch;
-			unsigned int segs;
-			unsigned int bytecount;
-			u16 mapped_as_page;
-		};
-		/* Rx */
-		struct page *page;
-	};
+	unsigned long time_stamp;
+	u16 length;
+	u16 next_to_watch;
+	unsigned int segs;
+	unsigned int bytecount;
+	u16 mapped_as_page;
 };
 
 struct e1000_ring {
@@ -155,16 +153,22 @@ struct e1000_ring {
 	void __iomem *head;
 	void __iomem *tail;
 
-	/* array of buffer information structs */
+	/* array of buffer information structs, Tx only */
 	struct e1000_buffer *buffer_info;
+
+	/* Rx buffers and the page_pool they are allocated from */
+	struct libeth_fqe *rx_fqes;
+	struct page_pool *pp;
+	u32 truesize;
+	/* frame spanning multiple NAPI polls */
+	struct libeth_xdp_buff_stash xdp;
+	struct xdp_rxq_info xdp_rxq;
 
 	char name[IFNAMSIZ + 5];
 	u32 ims_val;
 	u32 itr_val;
 	void __iomem *itr_register;
 	int set_itr;
-
-	struct sk_buff *rx_skb_top;
 };
 
 /* PHY register snapshot values */
@@ -192,7 +196,6 @@ struct e1000_adapter {
 
 	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
 	u32 bd_number;
-	u32 rx_buffer_len;
 	u16 mng_vlan_id;
 	u16 link_speed;
 	u16 link_duplex;
@@ -244,11 +247,7 @@ struct e1000_adapter {
 	u32 tx_hwtstamp_skipped;
 
 	/* Rx */
-	bool (*clean_rx)(struct e1000_ring *ring, int *work_done,
-			 int work_to_do) ____cacheline_aligned_in_smp;
-	void (*alloc_rx_buf)(struct e1000_ring *ring, int cleaned_count,
-			     gfp_t gfp);
-	struct e1000_ring *rx_ring;
+	struct e1000_ring *rx_ring ____cacheline_aligned_in_smp;
 
 	u32 rx_int_delay;
 	u32 rx_abs_int_delay;
@@ -436,7 +435,6 @@ s32 e1000e_get_base_timinca(struct e1000_adapter *adapter, u32 *timinca);
 
 #define FLAG2_CRC_STRIPPING               BIT(0)
 #define FLAG2_HAS_PHY_WAKEUP              BIT(1)
-#define FLAG2_IS_DISCARDING               BIT(2)
 #define FLAG2_DISABLE_ASPM_L1             BIT(3)
 #define FLAG2_HAS_PHY_STATS               BIT(4)
 #define FLAG2_HAS_EEE                     BIT(5)
@@ -495,8 +493,6 @@ void e1000e_reset_interrupt_capability(struct e1000_adapter *adapter);
 void e1000e_get_hw_control(struct e1000_adapter *adapter);
 void e1000e_release_hw_control(struct e1000_adapter *adapter);
 void e1000e_write_itr(struct e1000_adapter *adapter, u32 itr);
-
-extern unsigned int copybreak;
 
 extern const struct e1000_info e1000_82571_info;
 extern const struct e1000_info e1000_82572_info;
